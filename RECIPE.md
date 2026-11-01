@@ -17,7 +17,7 @@ Top to bottom, the window is a column (`titlebar: none`, so the layout draws its
    - **Work area**, a column:
      - **Tab strip, 34px**, `chrome` background. Each tab is flat with a 1px right border; the active tab uses the `background` color (`#24283b`) and `foreground` text, inactive tabs use `chrome` and `muted`. A new-tab `+` button (24px) is pinned at the right.
      - **Panes**: the active tab's terminals with no gap, no radius, a 1px `border` frame, and a 1px `accent` (`#7aa2f7`) frame on the focused pane.
-   - **Right panel, 320px** (min 220, max 640, resizable), hidden until opened, `chrome` background. A stack with two views: **Files** (project tree of the focused terminal's folder; folders expand in place; selecting a file does not open it) and **Changes** (git panel: stage and commit tracked files, read-only history, a diff view for the selected file, and a Generate action that starts an installed agent).
+   - **Right panel, 320px** (min 220, max 640, resizable), hidden until opened, `chrome` background. A stack with two views: **Files** (project tree of the focused terminal's folder, with a Material Icon Theme icon per file and folder, open-folder variants when expanded; read-only file preview; no rounded card around it) and **Changes** (git panel: stage and commit tracked files, read-only history, a diff view for the selected file, and a Generate action that starts an installed agent).
 3. **Status bar, 28px**, a row on `chrome`: the shipped `workspace-status` mod (flexible), then the **quota chips** (280px), then two **panel toggle icons** (64px, 24px buttons with 16px Lucide icons: `folder-tree` for Files, `git-compare` for Changes).
 
 Fonts: terminal `JetBrains Mono` 14px with `[6, 8]` terminal padding; UI font `Geist`.
@@ -51,19 +51,20 @@ Colors come from the custom theme `tokyo-night` (`themes/tokyo-night.json`): bac
 
 ## Built from
 
-`layouts/zed.json` node tree: `root` (column) → `titlebar` (block, 32px, `window_drag`), `body` (row) → [`sidebar` (column, 300px) → `new-space` (48px), `spaces`, `agents`], [`work` (column) → `tabs` (34px), `main` (block with `tab: "active"` and the `pane` style above)], [`panel` (column, 320px, `hidden: true`) → `panel-body` (stack, `active: "files"`) → `files`, `changes`], then `status` (row, 28px) → `status-main` (weight 1), `status-quota` (280px), `status-panels` (64px). Layout keys: `theme: "tokyo-night"`, `font`, `font_size`, `ui_font`, `background: "background"`, `terminal_padding`, `preview: "layouts/zed.svg"`.
+`layouts/zed.json` node tree: `root` (column) → `titlebar` (block, 32px, `window_drag`), `body` (row) → [`sidebar` (column, 300px) → `new-space` (48px), `spaces`, `agents`], [`work` (column) → `tabs` (34px), `main` (block with `tab: "active"` and the `pane` style above)], [`panel` (column, 320px, `hidden: true`) → `panel-body` (stack, `active: "files"`) → `files` (zed-file-icons), `changes` (zed-changes)], then `status` (row, 28px) → `status-main` (weight 1), `status-quota` (280px), `status-panels` (64px). Layout keys: `theme: "tokyo-night"`, `font`, `font_size`, `ui_font`, `background: "background"`, `terminal_padding`, `preview: "layouts/zed.svg"`.
 
 Own mods (all `place: "none"`):
 - `mods/zed-title` — title bar. Reads `theme()`, `window()`, `spaces()`, `agents()`, `focused()`, `layout()`; calls `run("layout.toggle")`, `run("window.minimize" | "window.maximize" | "window.close")`.
 - `mods/zed-tabs` — tab strip. Reads `spaces()`, `panes()`, `theme()`; calls `run("tab.select" | "tab.rename" | "tab.move" | "tab.close" | "tab.prev" | "tab.next")`, `openOverlay({mod: "menu"})` and `openOverlay({mod: "new-menu"})`.
 - `mods/zed-quota` — quota chips. Runs `sh -c 'cat "$HOME"/.claude/plugins/store/sub-meter_*.json'` every 60 s and parses `limits[]` (`kind`, `percentUsed`, `resetsAt`). Pure logic in `quota.js` with tests in `quota.test.js`.
 - `mods/zed-panel-switch` — the two toggle icons. Calls `layout.select {stack: "panel-body", child}`, `layout.show {id: "panel"}` and `layout.hide {id: "panel"}`. Icons in `icons/` (Lucide, ISC, see `icons/NOTICE.txt`).
-- `mods/zed-files`, `mods/zed-changes` — the panel views. `zed-files` lists folders with `sh` (`powershell` on Windows) and watches the folder with `watchFolder`; `zed-changes` runs `git` (status, diff, add, commit) in the focused terminal's folder, with tests for its planning logic.
+- `mods/zed-file-icons` — the Files view: a copy of `amster93/herdr-file-icons` (Apache-2.0; Material Icon Theme icons, MIT) with the root card removed. Lists folders with `sh` (`powershell` on Windows), runs `git` for change marks, watches the folder with `watchFolder`. 1184 SVGs in `icons/` indexed by `icons.js`. Credits in the README.
+- `mods/zed-changes` — the Changes view; it runs `git` (status, diff, add, commit) in the focused terminal's folder, with tests for its planning logic.
 - `mods/zed-new-space` — one mod, two roles: without `props().overlay` it renders the sidebar button; with it, the dialog. Uses `InputState`/`Input` from `gpui-base`, `knownAgents`, `pickFolder`, `home`, `panes`, `spaces`, `layout`, `openOverlay`, `closeOverlay`. Pure logic lives in `plan.js` (`planNewSpace`, `startingFolder`) with tests in `plan.test.js`. Its `mod.json` has `overlay: {width: 460, height: 340}`.
 
 Shipped mods used: `spaces`, `agents`, `workspace-status`, `menu`, `new-menu`, `worktree`. Shipped assets used by path: `mods/workspace-chrome/{sidebar,branch,plus}.svg`, `mods/tabs/win-{min,max,restore,close}.svg`, `mods/pane/close.svg`.
 
-Programs run: `git` (zed-changes), `sh`/`powershell` (zed-files folder listing) and one `cat` of the sub-meter file (zed-quota). No `hc`, no network. File access: the folder picker, the folders the user browses in the panel, and `~/.claude/plugins/store/sub-meter_*.json`.
+Programs run: `git` (zed-changes, zed-file-icons), `sh`/`powershell` (zed-file-icons folder listing) and one `cat` of the sub-meter file (zed-quota). No `hc`, no network. File access: the folder picker, the folders the user browses in the panel, and `~/.claude/plugins/store/sub-meter_*.json`.
 
 Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the screenshot for herdr.dev.
 
@@ -76,7 +77,7 @@ Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the scre
 - Sidebar mods (`spaces`, `agents`) switch to a compact rail under 160px, and `zed-new-space` hides its label at the same threshold by reading the `sidebar` node's `size.px` from `layout()`. Toggling or resizing the sidebar through other means that don't change `size.px` won't hide the label.
 - The branch field always hands off to the shipped `worktree` dialog; this layout never creates a checkout itself.
 - The `−` / `□` / `❐` glyphs are used for the minimize/maximize/restore buttons on macOS and Linux; only Windows uses the shipped `win-*.svg` icons.
-- Herdr does not serve SVG/PNG assets through symlinks, and caches a failed load per path. Copy assets as real files (the repo's `install.sh` does) and use a new file name if an icon silently fails to appear.
+- Herdr does not serve SVG/PNG assets through symlinks, refuses `import` of modules that resolve outside its folder, and caches a failed load per path. Copy mods as real files (the repo's `install.sh` does) and use a new file name if an icon silently fails to appear.
 - The quota chip depends on the `sub-meter` Claude Code plugin. Codex reports `rate_limits` as `null` on free plans, and opencode and grok expose no quota, so they get no chip.
 - It does not define `keys.json`; the title-bar toggle has no dedicated shortcut beyond the app's own `ctrl-shift-b`.
 
@@ -89,4 +90,4 @@ Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the scre
 - Clicking "New space" opens the dialog with the folder prefilled; Create with a folder runs `space.new`; Create with a branch opens the `worktree` dialog; an empty folder shows `Choose a folder.`.
 - Clicking Files or Changes in the status bar opens the right panel on that view and clicking the active one closes it; the icons are visible against the bar.
 - With the sub-meter plugin present, a Claude chip shows `5h` and `7d` percentages with reset times next to the panel icons.
-- `node --test` passes for `mods/zed-new-space/plan.test.js`, `mods/zed-quota/quota.test.js`, `mods/zed-changes/plan.test.js` and `mods/zed-files/tree.test.js`.
+- `node --test` passes for `mods/zed-new-space/plan.test.js`, `mods/zed-quota/quota.test.js`, and `mods/zed-changes/plan.test.js`.

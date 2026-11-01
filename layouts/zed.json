@@ -98,7 +98,7 @@
               "type": "stack",
               "active": "files",
               "children": [
-                { "id": "files", "type": "block", "content": { "mod": "zed-files" } },
+                { "id": "files", "type": "block", "content": { "mod": "zed-file-icons" } },
                 { "id": "changes", "type": "block", "content": { "mod": "zed-changes" } }
               ]
             }
