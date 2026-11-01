@@ -89,27 +89,12 @@ export default class ZedTabs extends View {
             .child(svg("mods/pane/close.svg").size(11))));
     };
 
-    const panel = find(layout(), "panel"), body = find(layout(), "panel-body");
-    this.syncPanel(space, panel, body);
-    const panelButton = (id, label, icon) => {
-      const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`zed-panel-${id}`).h(24).px(8).mr(4).gap(5).flex_none().items_center().rounded(4).text_size(12)
-        .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
-        .hover(s => s.bg(t.hover))
-        .on_mouse_down("left", stop)
-        .on_click(() => {
-          if (on) run("layout.hide", { id: "panel" });
-          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        })
-        .child(svg(icon).size(14)).child(label);
-    };
+    this.syncPanel(space, find(layout(), "panel"), find(layout(), "panel-body"));
 
     return h_flex().size_full().min_w(0).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scrollbar().children(shown.map(item)))
-      .child(panelButton("files", "Files", "mods/files/file.svg"))
-      .child(panelButton("changes", "Changes", "mods/changes/changes.svg"))
       .child(div().id("zed-tab-new").size(24).mr(6).flex_none().flex().items_center().justify_center().rounded(4)
         .text_color(t.muted)
         .hover(s => s.bg(t.hover).text_color(t.foreground))

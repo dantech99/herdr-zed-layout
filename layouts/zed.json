@@ -108,10 +108,14 @@
     },
     {
       "id": "status",
-      "type": "block",
+      "type": "row",
       "size": { "px": 28 },
       "background": "chrome",
-      "content": { "mod": "workspace-status" }
+      "children": [
+        { "id": "status-main", "type": "block", "size": { "weight": 1 }, "content": { "mod": "workspace-status" } },
+        { "id": "status-quota", "type": "block", "size": { "px": 280 }, "min": 0, "background": "chrome", "content": { "mod": "zed-quota" } },
+        { "id": "status-panels", "type": "block", "size": { "px": 64 }, "background": "chrome", "content": { "mod": "zed-panel-switch" } }
+      ]
     }
   ]
 }
