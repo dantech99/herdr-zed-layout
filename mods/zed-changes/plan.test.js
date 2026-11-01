@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, isUnmerged, canDelete } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -48,16 +48,17 @@ test("tooManyChanges flags the home folder and very large change sets", () => {
   assert.equal(tooManyChanges("/srv/x", null, 0), false);
 });
 
-test("parseBranches lists local branches, then remote-only ones, and marks the current", () => {
+test("parseBranches lists local branches, then remote-only ones, with author, age and subject", () => {
   const out = [
-    " \trefs/heads/feat/x", "*\trefs/heads/main",
-    " \trefs/remotes/origin/HEAD", " \trefs/remotes/origin/main", " \trefs/remotes/origin/hotfix",
-    " \trefs/remotes/upstream/feat/x", " \trefs/tags/v1",
+    " \trefs/heads/feat/x\tAna\t3 months ago\tchore: guitar",
+    "*\trefs/heads/main\tBob\t2 days ago\tfeat(social): add reel",
+    " \trefs/remotes/origin/HEAD\tBob\t2 days ago\tx", " \trefs/remotes/origin/main\tBob\t2 days ago\tx",
+    " \trefs/remotes/origin/hotfix\tCy\t1 hour ago\tfix: a\tb", " \trefs/remotes/upstream/feat/x\tA\t1 day ago\ty", " \trefs/tags/v1\tA\t1 day ago\ty",
   ].join("\n");
   assert.deepEqual(parseBranches(out), [
-    { name: "feat/x", current: false, remote: null },
-    { name: "main", current: true, remote: null },
-    { name: "hotfix", current: false, remote: "origin" },
+    { name: "feat/x", current: false, remote: null, author: "Ana", age: "3 months ago", subject: "chore: guitar" },
+    { name: "main", current: true, remote: null, author: "Bob", age: "2 days ago", subject: "feat(social): add reel" },
+    { name: "hotfix", current: false, remote: "origin", author: "Cy", age: "1 hour ago", subject: "fix: a\tb" },
   ]);
   assert.deepEqual(parseBranches(""), []);
 });
@@ -69,20 +70,43 @@ test("switchArgs switches by name and BRANCH_FORMAT asks for HEAD and the full r
   assert.match(BRANCH_FORMAT, /%\(refname\)/);
 });
 
-test("deleteArgs is safe by default and forces only when asked", () => {
-  assert.deepEqual(deleteArgs("wip", false), ["branch", "-d", "--", "wip"]);
-  assert.deepEqual(deleteArgs("wip", true), ["branch", "-D", "--", "wip"]);
-  assert.deepEqual(deleteArgs("-x", false), ["branch", "-d", "--", "-x"]);
+test("deleteArgs deletes without asking git to refuse unmerged branches", () => {
+  assert.deepEqual(deleteArgs("wip"), ["branch", "-D", "--", "wip"]);
+  assert.deepEqual(deleteArgs("-x"), ["branch", "-D", "--", "-x"]);
 });
 
-test("isUnmerged recognises git's refusal to delete an unmerged branch", () => {
-  assert.equal(isUnmerged("error: the branch 'wip' is not fully merged\nhint: ..."), true);
-  assert.equal(isUnmerged("error: cannot delete branch 'main' used by worktree"), false);
-  assert.equal(isUnmerged(""), false);
+test("deletedNote tells how to get the branch back", () => {
+  assert.equal(deletedNote("wip", "Deleted branch wip (was 8e8bcb7).\n"), "Deleted wip. To restore it: git branch wip 8e8bcb7");
+  assert.equal(deletedNote("wip", ""), "Deleted wip.");
+});
+
+test("filterBranches matches names and remotes, ignoring case", () => {
+  const list = [{ name: "main", remote: null }, { name: "Feat/Wait", remote: null }, { name: "hotfix", remote: "origin" }];
+  assert.equal(filterBranches(list, "").length, 3);
+  assert.deepEqual(filterBranches(list, "feat").map(b => b.name), ["Feat/Wait"]);
+  assert.deepEqual(filterBranches(list, "origin/hot").map(b => b.name), ["hotfix"]);
+});
+
+test("canCreate needs a new, option-free name; createArgs switches to it", () => {
+  const list = [{ name: "main", remote: null }, { name: "hotfix", remote: "origin" }];
+  assert.equal(canCreate(list, "new-thing"), true);
+  assert.equal(canCreate(list, "  "), false);
+  assert.equal(canCreate(list, "main"), false);
+  assert.equal(canCreate(list, "-x"), false);
+  assert.equal(canCreate(list, "hotfix"), false); // already there on the remote: switch to it instead
+  assert.deepEqual(createArgs("new-thing"), ["switch", "-c", "new-thing"]);
 });
 
 test("only local branches other than the current one can be deleted", () => {
   assert.equal(canDelete({ name: "a", current: false, remote: null }), true);
   assert.equal(canDelete({ name: "a", current: true, remote: null }), false);
   assert.equal(canDelete({ name: "a", current: false, remote: "origin" }), false);
+});
+
+test("unpushedArgs counts the commits of a branch that no remote has; parseCount reads it", () => {
+  assert.deepEqual(unpushedArgs("wip"), ["rev-list", "--count", "wip", "--not", "--remotes"]);
+  assert.equal(parseCount("3\n"), 3);
+  assert.equal(parseCount("0\n"), 0);
+  assert.equal(parseCount(""), 0);
+  assert.equal(parseCount("junk"), 0);
 });

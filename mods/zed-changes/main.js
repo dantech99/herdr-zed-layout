@@ -2,9 +2,9 @@
 // View Diff shows the selected file. Commit tracked never runs git add.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
+import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, isUnmerged, canDelete } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -23,7 +23,15 @@ async function listBranches(root, on) {
 
 export default class ZedChanges extends View {
   init(_given, cx) {
-    if (props()?.menu) { this.menu = props(); this.menuError = null; this.confirm = null; this.force = false; return; } // the branch popup: this same mod draws it
+    if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete modal: this same mod draws it
+    if (props()?.menu) { // the branch popup: this same mod draws it
+      this.menu = props(); this.menuError = null; this.menuNote = null;
+      this.search = InputState.new({ placeholder: "Switch or type to create a branch..." });
+      this.search.on("change", (_e, cx2) => cx2.notify());
+      this.search.on("submit", (_e, cx2) => this.submitSearch(cx2));
+      try { this.search.focus(); } catch { /* not ready yet: the box still takes a click */ }
+      return;
+    }
     this.files = [];
     this.history = [];
     this.tab = "changes";
@@ -148,61 +156,110 @@ export default class ZedChanges extends View {
   async openBranches() {
     if (!this.root || this.tooMany) return;
     const branches = await listBranches(this.root, this.on);
-    openOverlay({ mod: "zed-changes", kind: "popup", width: 300, height: Math.min(420, 110 + Math.max(branches.length, 1) * 34), props: { menu: true, root: this.root, on: this.on, branches } });
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 400, height: Math.min(520, 120 + Math.max(branches.length, 1) * 52), props: { menu: true, root: this.root, on: this.on, branches } });
+  }
+
+  async runGit(args) {
+    const { root, on } = this.menu ?? this.dialog;
+    return exec("git", [...READ, ...args], { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+  }
+
+  fail(r, cx) {
+    this.menuError = (r.stderr || "git failed").trim().split("\n").slice(0, 3).join(" ");
+    this.menuNote = null;
+    cx.notify();
   }
 
   async pickBranch(branch, cx) {
     if (branch.current) { run("overlay.close"); return; }
+    const r = await this.runGit(switchArgs(branch.name));
+    if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
+  }
+
+  async createBranch(name, cx) {
+    const r = await this.runGit(createArgs(name));
+    if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
+  }
+
+  // Enter in the search box: create the typed name if it is new, else switch to the first match.
+  submitSearch(cx) {
+    const query = this.search.value(), branches = this.menu.branches;
+    if (canCreate(branches, query)) this.createBranch(query.trim(), cx);
+    else { const first = filterBranches(branches, query)[0]; if (first) this.pickBranch(first, cx); }
+  }
+
+  // The trash icon deletes at once. Only a branch with commits no remote has asks first, in a modal.
+  async requestDelete(branch, cx) {
+    const count = parseCount((await this.runGit(unpushedArgs(branch.name))).stdout);
+    if (count === 0) { await this.deleteNow(branch.name, cx); return; }
+    const { root, on, overlay } = this.menu;
+    run("overlay.close", { id: overlay });
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: { confirm: true, root, on, branch: branch.name, count } });
+  }
+
+  async deleteNow(name, cx) {
+    const r = await this.runGit(deleteArgs(name));
+    if (r.code !== 0) { this.fail(r, cx); return; }
     const { root, on } = this.menu;
-    const r = await exec("git", [...READ, ...switchArgs(branch.name)], { cwd: root, on }).catch(e => ({ code: 1, stderr: String(e.message || e) }));
-    if (r.code === 0) { run("overlay.close"); return; }
-    this.menuError = (r.stderr || "git switch failed").trim().split("\n").slice(0, 3).join(" ");
+    this.menu = { ...this.menu, branches: await listBranches(root, on) };
+    this.menuError = null;
+    this.menuNote = deletedNote(name, r.stdout);
     cx.notify();
   }
 
-  // Delete is two steps: the trash icon asks, then "Delete" runs `git branch -d`. A branch that is not
-  // merged yet is refused by git and offered again as "Force delete" (`-D`).
-  async deleteBranch(cx) {
-    const { root, on } = this.menu, name = this.confirm;
-    if (!name) return;
-    const r = await exec("git", [...READ, ...deleteArgs(name, this.force)], { cwd: root, on }).catch(e => ({ code: 1, stderr: String(e.message || e) }));
-    if (r.code === 0) {
-      this.menu = { ...this.menu, branches: await listBranches(root, on) };
-      this.confirm = null; this.force = false; this.menuError = null;
-    } else if (isUnmerged(r.stderr)) {
-      this.force = true;
-      this.menuError = `${name} is not fully merged: its commits would be lost.`;
-    } else {
-      this.menuError = (r.stderr || "git branch failed").trim().split("\n").slice(0, 3).join(" ");
-      this.confirm = null; this.force = false;
-    }
-    cx.notify();
+  // The modal: accept deletes the branch with its unpushed commits, cancel closes it.
+  async acceptDelete(cx) {
+    const r = await this.runGit(deleteArgs(this.dialog.branch));
+    if (r.code === 0) run("overlay.close", { id: this.dialog.overlay }); else this.fail(r, cx);
   }
 
+  renderDialog() {
+    const t = theme(), { branch, count } = this.dialog;
+    const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex().id("zed-delete-branch").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child(`Delete branch ${branch}?`))
+      .child(div().text_size(12.5).text_color(t.muted).child(`It has ${count} commit${count === 1 ? "" : "s"} that no remote has. They will be lost from the branch; git reflog can still recover them for a while.`))
+      .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .child(h_flex().gap(8).justify_end().pt(4)
+        .child(button("delete-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: this.dialog.overlay })))
+        .child(button("delete-accept", "Accept", t.ansi1, t.background, cx => this.acceptDelete(cx))));
+  }
+
+  // The branch popup, laid out like Zed's: sections, two-line rows (name, then author · age · subject),
+  // a trash icon on deletable rows, and a search box at the bottom that also creates branches.
   renderMenu() {
-    const t = theme(), { branches } = this.menu;
-    const small = (id, label, bg, color, act) => div().id(id).h(24).px(8).flex().items_center().rounded(5).flex_none().cursor_pointer().text_size(11.5)
-      .bg(bg).text_color(color).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
-    const row = b => this.confirm === b.name
-      ? h_flex().id(`branch-confirm-${b.name}`).h(36).px(10).gap(6).items_center().rounded(8).bg(t.selected).text_size(12.5)
-        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(this.force ? `Force delete ${b.name}?` : `Delete ${b.name}?`))
-        .child(small("branch-delete-yes", this.force ? "Force delete" : "Delete", t.ansi1, t.background, cx => this.deleteBranch(cx)))
-        .child(small("branch-delete-no", "Cancel", t.raised, t.muted, cx => { this.confirm = null; this.force = false; this.menuError = null; cx.notify(); }))
-      : h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).h(32).px(10).gap(8).items_center().rounded(8).cursor_pointer().text_size(12.5)
-        .text_color(b.current ? t.foreground : t.muted).hover(s => s.bg(t.hover)).when(b.current, el => el.bg(t.selected))
-        .on_click((_e, cx) => this.pickBranch(b, cx))
-        .child(div().w(14).flex_none().text_color(t.accent).child(b.current ? "✓" : ""))
-        .child(div().flex_1().min_w(0).truncate().child(b.name))
-        .when(Boolean(b.remote), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(b.remote)))
-        .when(canDelete(b), el => el.child(div().id(`branch-trash-${b.name}`).size(22).flex_none().flex().items_center().justify_center().rounded(5)
-          .hover(s => s.bg(t.raised)).on_click((_e, cx) => { cx.stop_propagation(); this.confirm = b.name; this.force = false; this.menuError = null; cx.notify(); })
-          .child(svg("mods/zed-changes/icons/trash.svg").size(14).text_color(t.dim))));
+    const t = theme(), query = this.search?.value() ?? "", all = this.menu.branches;
+    const shown = filterBranches(all, query), local = shown.filter(b => !b.remote), remote = shown.filter(b => b.remote);
+    const heading = text => div().px(10).pt(10).pb(4).text_size(11.5).text_color(t.dim).child(text);
+    const row = b => h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).px(10).py(7).gap(10).items_center().rounded(8).cursor_pointer()
+      .hover(s => s.bg(t.selected)).on_click((_e, cx) => this.pickBranch(b, cx))
+      .child(div().size(16).flex_none().flex().items_center().justify_center()
+        .child(svg(b.current ? "mods/zed-changes/icons/check.svg" : b.remote ? "mods/zed-changes/icons/cloud.svg" : "mods/zed-changes/icons/git-branch.svg").size(15)
+          .text_color(b.current ? t.accent : t.dim)))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(div().truncate().text_size(13.5).text_color(t.foreground).child(b.remote ? `${b.remote}/${b.name}` : b.name))
+        .child(div().truncate().text_size(11.5).text_color(t.dim).child([b.author, b.age, b.subject].filter(Boolean).join("  •  "))))
+      .when(canDelete(b), el => el.child(div().id(`branch-trash-${b.name}`).size(26).flex_none().flex().items_center().justify_center().rounded(6)
+        .hover(s => s.bg(t.raised)).tooltip(`Delete ${b.name}`)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => { cx.stop_propagation(); this.requestDelete(b, cx); })
+        .child(svg("mods/zed-changes/icons/trash.svg").size(14).text_color(t.dim))));
+    const create = canCreate(all, query)
+      ? h_flex().id("branch-create").px(10).py(9).gap(10).items_center().rounded(8).cursor_pointer().text_size(13).text_color(t.accent)
+        .hover(s => s.bg(t.selected)).on_click((_e, cx) => this.createBranch(query.trim(), cx))
+        .child(`Create branch “${query.trim()}”`)
+      : null;
     return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
-      .child(div().px(10).pt(6).pb(4).flex_none().text_size(11.5).text_color(t.dim).child("Switch branch"))
-      .child(v_flex().max_h(280).overflow_y_scrollbar()
-        .children(branches.map(row))
-        .when(branches.length === 0, el => el.child(div().px(10).py(8).text_size(12).text_color(t.dim).child("No branches"))))
-      .when(Boolean(this.menuError), el => el.child(div().flex_none().px(10).py(6).text_size(11).text_color(t.ansi1).child(this.menuError)));
+      .child(v_flex().max_h(340).overflow_y_scrollbar()
+        .when(local.length > 0, el => el.child(heading("Local Branches")).children(local.map(row)))
+        .when(remote.length > 0, el => el.child(heading("Remote Branches")).children(remote.map(row)))
+        .when(shown.length === 0 && !create, el => el.child(div().px(10).py(10).text_size(12).text_color(t.dim).child("No matching branches")))
+        .when(Boolean(create), el => el.child(create)))
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .when(Boolean(this.menuNote), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.muted).child(this.menuNote)))
+      .child(div().mt(4).h(36).px(10).flex().items_center().border_t(1).border_color(t.border).text_size(12.5)
+        .child(Input.new(this.search).size_full().text_color(t.foreground)));
   }
 
   toggleDiff(cx) {
@@ -240,6 +297,7 @@ export default class ZedChanges extends View {
   }
 
   render() {
+    if (this.dialog) return this.renderDialog();
     if (this.menu) return this.renderMenu();
     const t = theme();
     const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";

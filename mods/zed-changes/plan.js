@@ -44,19 +44,20 @@ export function tooManyChanges(root, home, count) {
   return (Boolean(home) && root === home) || count > MAX_CHANGES;
 }
 
-// `git for-each-ref` format for the branch picker: "<* or space>\t<full ref>".
-export const BRANCH_FORMAT = "%(HEAD)%09%(refname)";
+// `git for-each-ref` format for the branch picker: "<* or space>\t<full ref>\t<author>\t<age>\t<subject>".
+export const BRANCH_FORMAT = "%(HEAD)%09%(refname)%09%(authorname)%09%(committerdate:relative)%09%(contents:subject)";
 
 // Local branches (as git sorted them), then remote branches that have no local one yet.
 export function parseBranches(text) {
   const local = [], remote = [];
   for (const line of String(text).split("\n")) {
-    const [head, ref] = line.split("\t");
+    const [head, ref, author = "", age = "", ...subject] = line.split("\t");
     if (!ref) continue;
-    if (ref.startsWith("refs/heads/")) local.push({ name: ref.slice(11), current: head === "*", remote: null });
+    const info = { author, age, subject: subject.join("\t") };
+    if (ref.startsWith("refs/heads/")) local.push({ name: ref.slice(11), current: head === "*", remote: null, ...info });
     else if (ref.startsWith("refs/remotes/")) {
       const [name, ...rest] = ref.slice(13).split("/"), branch = rest.join("/");
-      if (branch && branch !== "HEAD") remote.push({ name: branch, current: false, remote: name });
+      if (branch && branch !== "HEAD") remote.push({ name: branch, current: false, remote: name, ...info });
     }
   }
   const have = new Set(local.map(b => b.name)), seen = new Set();
@@ -66,10 +67,31 @@ export function parseBranches(text) {
 // A name starting with "-" must not be read as an option.
 export const switchArgs = name => name.startsWith("-") ? ["switch", "--", name] : ["switch", name];
 
-// Safe delete (`-d`, which refuses an unmerged branch) unless the user insists (`-D`).
-export const deleteArgs = (name, force) => ["branch", force ? "-D" : "-d", "--", name];
+// One click deletes, as in Zed: `-D`, so a branch git calls unmerged goes too (the note tells how to restore it).
+export const deleteArgs = name => ["branch", "-D", "--", name];
 
-export const isUnmerged = stderr => /not fully merged/i.test(String(stderr ?? ""));
+export function deletedNote(name, stdout) {
+  const hash = /\(was ([0-9a-f]+)\)/.exec(String(stdout ?? ""))?.[1];
+  return hash ? `Deleted ${name}. To restore it: git branch ${name} ${hash}` : `Deleted ${name}.`;
+}
 
 // Remote branches are never deleted from here, and git refuses the current one.
 export const canDelete = branch => !branch.current && !branch.remote;
+
+export function filterBranches(branches, query) {
+  const q = String(query ?? "").trim().toLowerCase();
+  return q ? branches.filter(b => `${b.remote ? `${b.remote}/` : ""}${b.name}`.toLowerCase().includes(q)) : branches;
+}
+
+// Typing a name that no branch has yet offers to create it; a name starting with "-" is not a branch.
+export const canCreate = (branches, query) => {
+  const name = String(query ?? "").trim();
+  return name !== "" && !name.startsWith("-") && !branches.some(b => b.name === name);
+};
+
+export const createArgs = name => ["switch", "-c", name.trim()];
+
+// Commits of `name` that no remote has: deleting the branch would lose them.
+export const unpushedArgs = name => ["rev-list", "--count", name, "--not", "--remotes"];
+
+export const parseCount = stdout => { const n = Number.parseInt(String(stdout ?? "").trim(), 10); return Number.isFinite(n) && n > 0 ? n : 0; };
