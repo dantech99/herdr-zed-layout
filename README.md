@@ -6,7 +6,8 @@ Layout de Herdr inspirado en Zed: barra de título propia, pestañas estilo Zed,
 - `mods/zed-title`, `mods/zed-tabs`, `mods/zed-new-space`, `mods/zed-panel-switch`, `mods/zed-changes`: mods propios.
 - `mods/zed-quota`: barras de cuota por agente (copia de un mod de terceros con PRs aplicados, ver Créditos). Requiere `quota-axi`.
 - `mods/zed-file`: abre un archivo del panel Files como pestaña propia, con resaltado de sintaxis y edición con Ctrl/Cmd-S (solo lectura si es remoto, truncado o binario).
-- `mods/zed-settings`: ventana de ajustes del layout (engranaje de la barra de estado): word wrap global y opciones de cuota.
+- `mods/zed-sidebar-footer`: pie del sidebar con Settings (ajustes de Herdr), Layout settings y Add machine.
+- `mods/zed-settings`: ventana de ajustes del layout (fila «Layout settings» del pie del sidebar): word wrap global y opciones de cuota.
 - `mods/zed-file-icons`: panel Files con los iconos de Material Icon Theme (copia modificada de un mod de terceros, ver Créditos).
 - `themes/tokyo-night.json`: tema.
 

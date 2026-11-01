@@ -53,6 +53,13 @@
               "size": { "weight": 1 },
               "min": 90,
               "content": { "mod": "agents" }
+            },
+            {
+              "id": "sidebar-footer",
+              "type": "block",
+              "size": { "px": 112 },
+              "background": "chrome",
+              "content": { "mod": "zed-sidebar-footer" }
             }
           ]
         },
@@ -114,7 +121,7 @@
       "children": [
         { "id": "status-main", "type": "block", "size": { "weight": 1 }, "content": { "mod": "workspace-status" } },
         { "id": "status-quota", "type": "block", "size": { "px": 400 }, "min": 0, "background": "chrome", "content": { "mod": "zed-quota", "props": { "hidden": ["cursor", "copilot"], "windows": { "grok": ["credits"] } } } },
-        { "id": "status-panels", "type": "block", "size": { "px": 92 }, "background": "chrome", "content": { "mod": "zed-panel-switch" } }
+        { "id": "status-panels", "type": "block", "size": { "px": 64 }, "background": "chrome", "content": { "mod": "zed-panel-switch" } }
       ]
     }
   ]
