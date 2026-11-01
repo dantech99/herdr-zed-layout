@@ -105,3 +105,50 @@ export function listHeight(branches, creating = false) {
   const px = (local ? 30 + local * 52 : 0) + (remote ? 30 + remote * 52 : 0) + (creating ? 40 : 0);
   return Math.min(LIST_MAX, px);
 }
+
+// Entries of the sync menu, in order; `-` is a separator.
+export const SYNC_MENU = [
+  ["fetch", "Fetch"], ["fetch-from", "Fetch From…"], ["pull", "Pull"], ["pull-rebase", "Pull (Rebase)"],
+  "-", ["push", "Push"], ["push-to", "Push To…"], ["force-push", "Force Push"],
+];
+
+export const needsRemote = op => op === "fetch-from" || op === "push-to";
+export const isForce = op => op === "force-push";
+
+// The git arguments of a menu entry (null for anything else). `upstream`: the branch tracks one;
+// without it a push publishes the branch and sets its upstream. A force push uses --force-with-lease,
+// which refuses to overwrite commits someone else pushed since the last fetch.
+export function syncArgs(op, { remote, upstream } = {}) {
+  const publish = remote2 => ["--set-upstream", remote2, "HEAD"];
+  switch (op) {
+    case "fetch": return ["fetch"];
+    case "fetch-from": return ["fetch", remote];
+    case "pull": return ["pull", "--no-edit"];
+    case "pull-rebase": return ["pull", "--rebase"];
+    case "push": return upstream ? ["push"] : ["push", ...publish(remote ?? "origin")];
+    case "push-to": return upstream ? ["push", remote, "HEAD"] : ["push", ...publish(remote)];
+    case "force-push": return upstream ? ["push", "--force-with-lease"] : ["push", "--force-with-lease", ...publish(remote ?? "origin")];
+    default: return null;
+  }
+}
+
+// `git rev-list --left-right --count @{upstream}...HEAD` prints "<behind>\t<ahead>".
+export function parseAheadBehind(stdout) {
+  const m = /^(\d+)\s+(\d+)$/.exec(String(stdout ?? "").trim());
+  return m ? { behind: Number(m[1]), ahead: Number(m[2]) } : null;
+}
+
+// The button beside the branch name: publish a new branch, pull when behind, push when ahead, else fetch.
+export function primaryAction({ remotes, upstream, ahead, behind }) {
+  if (!remotes.length) return null;
+  if (!upstream) return { op: "push", label: "Publish" };
+  if (behind > 0) return { op: "pull", label: `Pull ↓${behind}` };
+  if (ahead > 0) return { op: "push", label: `Push ↑${ahead}` };
+  return { op: "fetch", label: "Fetch" };
+}
+
+// One line of what git said: it writes progress to stderr, so that comes first.
+export function summarize(stdout, stderr) {
+  const text = String(stderr ?? "").trim() || String(stdout ?? "").trim();
+  return text ? text.split("\n").slice(0, 3).map(l => l.trim()).join(" ") : "Done";
+}

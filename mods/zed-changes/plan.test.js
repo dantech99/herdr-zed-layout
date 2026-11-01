@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, LIST_MAX } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, LIST_MAX, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -118,4 +118,47 @@ test("listHeight sizes the scrolling list: headings plus rows, capped", () => {
   assert.equal(listHeight([l, r]), 30 + 52 + 30 + 52);
   assert.equal(listHeight(Array(20).fill(l)), LIST_MAX);
   assert.equal(listHeight([l], true), 30 + 52 + 40); // + the "Create branch" row
+});
+
+test("syncArgs builds the git command for each menu entry", () => {
+  assert.deepEqual(syncArgs("fetch", {}), ["fetch"]);
+  assert.deepEqual(syncArgs("fetch-from", { remote: "up" }), ["fetch", "up"]);
+  assert.deepEqual(syncArgs("pull", {}), ["pull", "--no-edit"]);
+  assert.deepEqual(syncArgs("pull-rebase", {}), ["pull", "--rebase"]);
+  assert.deepEqual(syncArgs("push", { upstream: true }), ["push"]);
+  assert.deepEqual(syncArgs("push", { upstream: false }), ["push", "--set-upstream", "origin", "HEAD"]);
+  assert.deepEqual(syncArgs("push", { upstream: false, remote: "up" }), ["push", "--set-upstream", "up", "HEAD"]);
+  assert.deepEqual(syncArgs("push-to", { upstream: true, remote: "up" }), ["push", "up", "HEAD"]);
+  assert.deepEqual(syncArgs("push-to", { upstream: false, remote: "up" }), ["push", "--set-upstream", "up", "HEAD"]);
+  assert.deepEqual(syncArgs("force-push", { upstream: true }), ["push", "--force-with-lease"]);
+  assert.deepEqual(syncArgs("force-push", { upstream: false }), ["push", "--force-with-lease", "--set-upstream", "origin", "HEAD"]);
+  assert.equal(syncArgs("rm -rf", {}), null);
+});
+
+test("only Fetch From and Push To ask for a remote; only Force Push is a force", () => {
+  assert.deepEqual(["fetch", "fetch-from", "pull", "push", "push-to", "force-push"].map(needsRemote), [false, true, false, false, true, false]);
+  assert.deepEqual(["push", "force-push"].map(isForce), [false, true]);
+});
+
+test("parseAheadBehind reads `rev-list --left-right --count @{upstream}...HEAD`", () => {
+  assert.deepEqual(parseAheadBehind("2\t5\n"), { behind: 2, ahead: 5 });
+  assert.deepEqual(parseAheadBehind("0\t0"), { behind: 0, ahead: 0 });
+  assert.equal(parseAheadBehind(""), null);
+  assert.equal(parseAheadBehind("junk"), null);
+});
+
+test("primaryAction picks the button next to the branch name", () => {
+  const base = { remotes: ["origin"], upstream: true, ahead: 0, behind: 0 };
+  assert.equal(primaryAction({ ...base, remotes: [] }), null);
+  assert.deepEqual(primaryAction({ ...base, upstream: false }), { op: "push", label: "Publish" });
+  assert.deepEqual(primaryAction({ ...base, behind: 2, ahead: 1 }), { op: "pull", label: "Pull ↓2" });
+  assert.deepEqual(primaryAction({ ...base, ahead: 3 }), { op: "push", label: "Push ↑3" });
+  assert.deepEqual(primaryAction(base), { op: "fetch", label: "Fetch" });
+});
+
+test("summarize keeps git's first lines, preferring stderr (where git writes progress)", () => {
+  assert.equal(summarize("", ""), "Done");
+  assert.equal(summarize("Already up to date.\n", ""), "Already up to date.");
+  assert.equal(summarize("x", "To github.com:a/b\n   1a2b..3c4d  main -> main\n"), "To github.com:a/b 1a2b..3c4d  main -> main");
+  assert.equal(summarize("", "a\nb\nc\nd\ne"), "a b c");
 });
