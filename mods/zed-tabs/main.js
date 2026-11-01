@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, layout } from "herdr";
+import { spaces, panes, shared, run, openOverlay, theme, layout } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -54,6 +54,7 @@ export default class ZedTabs extends View {
       const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program
         ?? panes().find(p => p.tab === c.id)?.program;
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
+      const fileTab = shared("zed-file.tabs")?.[c.id]; // a file opened from the Files panel
       return h_flex().id(`tab-${c.id}`).h_full().pl(12).pr(6).gap(8).items_center().flex_none()
         .border_r(1).border_color(t.border)
         .bg(c.active ? t.background : t.chrome)
@@ -75,8 +76,9 @@ export default class ZedTabs extends View {
           cx.stop_propagation();
           openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } });
         })
-        .child(div().size(8).rounded(4).flex_none().bg(c.status ? t[c.status] : t.dim))
-        .when(Boolean(program?.icon), el => el.child(program.tint
+        .when(!fileTab, el => el.child(div().size(8).rounded(4).flex_none().bg(c.status ? t[c.status] : t.dim)))
+        .when(Boolean(fileTab?.icon), el => el.child(image(fileTab.icon).size(14)))
+        .when(!fileTab && Boolean(program?.icon), el => el.child(program.tint
           ? svg(program.icon).size(14).text_color(c.active ? t.foreground : t.muted)
           : image(program.icon).size(14)))
         .child(div().max_w(180).truncate().text_size(12).child(c.zoomed ? `${name} Z` : name))
