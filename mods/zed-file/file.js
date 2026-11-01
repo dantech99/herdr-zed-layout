@@ -75,8 +75,9 @@ export function parseFound(stdout) {
 // is an argument, never part of the script, so quotes and spaces in it are safe.
 export const launchArgs = (cmd, file) => ["-c", 'nohup "$0" "$@" >/dev/null 2>&1 &', cmd, file];
 
-// Material Icon Theme has icons for a few editors: `cursor.svg` is the light grey one for dark themes.
+// Icons for a few editors: Material Icon Theme's, plus Zed's own app icon. `cursor.svg` is the light grey one for dark themes.
 export function editorIcon(cmd, dark) {
+  if (cmd === "zed" || cmd === "zeditor") return "mods/zed-file/icons/zed.png";
   const name = cmd.startsWith("code") ? "vscode" : cmd === "cursor" ? (dark ? "cursor" : "cursor_light") : cmd === "subl" ? "sublime" : null;
   return name && `mods/zed-file/icons/${name}.svg`;
 }

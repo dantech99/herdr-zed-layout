@@ -74,7 +74,9 @@ test("editorIcon picks the Material icon by theme, or null", () => {
   assert.equal(editorIcon("code-insiders", false), "mods/zed-file/icons/vscode.svg");
   assert.equal(editorIcon("cursor", true), "mods/zed-file/icons/cursor.svg");
   assert.equal(editorIcon("cursor", false), "mods/zed-file/icons/cursor_light.svg");
-  assert.equal(editorIcon("zed", true), null);
+  assert.equal(editorIcon("zed", true), "mods/zed-file/icons/zed.png");
+  assert.equal(editorIcon("zeditor", false), "mods/zed-file/icons/zed.png");
+  assert.equal(editorIcon("kate", true), null);
 });
 
 test("preferredEditor honours the saved choice, defaults to Zed, then falls back", () => {
