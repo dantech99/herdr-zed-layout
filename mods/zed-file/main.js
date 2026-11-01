@@ -50,14 +50,14 @@ export default class ZedFile extends View {
 
   openMenu() {
     const editors = shared("zed-file.editors") ?? [];
-    openOverlay({ mod: "zed-file", kind: "popup", width: 240, height: 12 + 30 + editors.length * 34, props: { menu: true, file: this.file, editors } });
+    openOverlay({ mod: "zed-file", kind: "popup", width: 240, height: 12 + 30 + editors.length * 38, props: { menu: true, file: this.file, editors } });
   }
 
   // An editor's icon, or a letter tile when Material Icon Theme has none.
-  glyph(e, t) {
+  glyph(e, t, size = 16) {
     const icon = editorIcon(e.cmd, Boolean(settings().dark));
-    return icon ? image(icon).size(16).flex_none()
-      : div().size(16).flex_none().flex().items_center().justify_center().rounded(4).bg(t.selected).text_size(10).font_semibold().text_color(t.muted).child(e.label[0]);
+    return icon ? image(icon).size(size).flex_none()
+      : div().size(size).flex_none().flex().items_center().justify_center().rounded(4).bg(t.selected).text_size(size * 0.6).font_semibold().text_color(t.muted).child(e.label[0]);
   }
 
   // The popup, styled like Herdr's own menus: a dim heading, then one row per installed editor
@@ -65,10 +65,10 @@ export default class ZedFile extends View {
   renderMenu() {
     const t = theme(), { file, editors } = this.menu;
     const row = e => {
-      return h_flex().id(`open-${e.cmd}`).h(34).px(10).gap(10).items_center().rounded(8).cursor_pointer().text_size(13)
+      return h_flex().id(`open-${e.cmd}`).h(38).px(10).gap(10).items_center().rounded(8).cursor_pointer().text_size(13)
         .text_color(t.foreground).hover(s => s.bg(t.hover))
         .on_click(() => { exec("sh", launchArgs(e.cmd, file)).catch(() => {}); run("overlay.close"); })
-        .child(this.glyph(e, t))
+        .child(this.glyph(e, t, 20))
         .child(div().flex_1().min_w(0).truncate().child(e.label));
     };
     return v_flex().id("zed-open-in").w_full().p(6).bg(t.popover)
@@ -162,8 +162,8 @@ export default class ZedFile extends View {
         .when(this.state.kind === "ok" && !this.on && this.file && (shared("zed-file.editors") ?? []).length > 0, el => {
           const editors = shared("zed-file.editors"), main = preferredEditor(editors, shared("zed-file.options")?.editor);
           return el.child(h_flex().id("open-in").flex_none().items_center().text_color(t.dim)
-            .child(div().id("open-main").p(3).rounded(4).cursor_pointer().hover(s => s.bg(t.hover)).tooltip(`Open in ${main.label}`)
-              .on_click(() => exec("sh", launchArgs(main.cmd, this.file)).catch(() => {})).child(this.glyph(main, t)))
+            .child(div().id("open-main").p(2).rounded(4).cursor_pointer().hover(s => s.bg(t.hover)).tooltip(`Open in ${main.label}`)
+              .on_click(() => exec("sh", launchArgs(main.cmd, this.file)).catch(() => {})).child(this.glyph(main, t, 22)))
             .child(div().id("open-menu").px(4).rounded(4).cursor_pointer().hover(s => s.text_color(t.foreground)).tooltip("Choose an editor")
               .on_click(() => this.openMenu()).child("▾")));
         })

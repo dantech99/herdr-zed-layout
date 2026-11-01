@@ -24,7 +24,7 @@ Verificar mods: `for m in mods/*/; do herdr-app check "$m"; done`
 
 ## Créditos
 
-- **`mods/zed-file/icons/zed.png`** es el icono de la aplicación Zed (© Zed Industries), reducido a 64 px; se usa solo para identificar el editor en el botón «abrir con». Los iconos de VS Code, Cursor y Sublime Text vienen de Material Icon Theme (MIT), con su licencia junto a ellos.
+- **`mods/zed-file/icons/zed.png`** es el icono de la aplicación Zed (© Zed Industries), reducido a 128 px; se usa solo para identificar el editor en el botón «abrir con». Los iconos de VS Code, Cursor y Sublime Text vienen de Material Icon Theme (MIT), con su licencia junto a ellos.
 
 - **`mods/zed-file-icons`** es una copia de [`amster93/herdr-file-icons`](https://github.com/amster93/herdr-file-icons) (Apache-2.0), autor: Dave (`amster93`). Cambio hecho aquí: la raíz del panel ya no dibuja su propia tarjeta redondeada con borde (anotado en la cabecera de `main.js`). Conserva su `LICENSE`, `LICENSE-Lucide.txt` y `LICENSE-material-icon-theme.txt`.
   - Los 1184 iconos son de [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) (MIT, © Material Extensions).
