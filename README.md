@@ -1,38 +1,75 @@
 # herdr-zed-layout
 
-Layout de Herdr inspirado en Zed: barra de título propia, pestañas estilo Zed, sidebar de spaces/agents y barra de estado.
+Layout para [Herdr](https://github.com/herdrdev/herdr-app) inspirado en Zed. Reúne una barra de título, navegación por pestañas, paneles Files y Changes, barra de estado, configuración del layout y cuotas de agentes.
 
-- `layouts/zed.json`: el layout (usa los mods de Herdr `spaces`, `agents`, `workspace-status`).
-- `mods/zed-title`, `mods/zed-tabs`, `mods/zed-new-space`, `mods/zed-panel-switch`, `mods/zed-changes`: mods propios.
-- `mods/zed-quota`: barras de cuota por agente (copia de un mod de terceros con PRs aplicados, ver Créditos). Requiere `quota-axi`.
-- `mods/zed-file`: abre un archivo del panel Files como pestaña propia, en solo lectura y con resaltado de sintaxis; un botón con el icono del editor lo abre en tu editor de código.
-- `mods/zed-sidebar-footer`: pie del sidebar con Settings (ajustes de Herdr), Layout settings y Add machine.
-- `mods/zed-settings`: ventana de ajustes del layout (fila «Layout settings» del pie del sidebar): word wrap global y opciones de cuota.
-- `mods/zed-file-icons`: panel Files con los iconos de Material Icon Theme (copia modificada de un mod de terceros, ver Créditos).
-- `themes/tokyo-night.json`: tema.
+## Qué incluye
+
+El layout `zed` usa el tema Tokyo Night, JetBrains Mono a 14 px para el contenido y Geist para la interfaz. Tiene una barra lateral de 300 px (ajustable entre 44 y 560 px), panel derecho inicialmente oculto y una barra de estado con cuota y selectores de panel.
+
+Los mods de Herdr que consume directamente son `spaces`, `agents`, `workspace-status` y, al crear un space con rama, `worktree`.
+
+### Mods propios
+
+| Mod | Funcionalidad |
+| --- | --- |
+| `zed-title` | Barra de título con breadcrumbs del space, rama y agente o pestaña; permite mostrar u ocultar la barra lateral y muestra controles de ventana cuando Herdr los expone. Ajusta el espacio de los controles de macOS. |
+| `zed-tabs` | Pestañas estilo Zed: seleccionar, cerrar, renombrar con doble clic, reordenar por arrastre, menú contextual, navegación con rueda e iconos para archivos. Conserva por space el panel derecho elegido (`files` o `changes`). |
+| `zed-new-space` | Botón y diálogo para crear spaces con carpeta, agente instalado, máquina activa o remota y rama opcional. Con rama abre el flujo de worktree; sin rama crea el space. Usa la carpeta del panel enfocado como valor inicial local. |
+| `zed-sidebar-footer` | Accesos a Settings de Herdr —con indicador de actualización—, Layout settings y Add machine. |
+| `zed-settings` | Ajustes con búsqueda y categorías **Editor**, **Quota bar** y **Providers**. Configura wrap global para nuevas pestañas, editor preferido, visualización de cuotas, ventanas, proveedores y límites de Antigravity. |
+| `zed-panel-switch` | Botones Files y Changes en la barra de estado; cambian el panel derecho o lo ocultan si ya está activo. |
+| `zed-file-icons` | Navegador Files con iconos, expansión de carpetas y apertura de archivos en pestañas `zed-file`. Omite `.git` y limita una lectura de directorio a 501 entradas. |
+| `zed-file` | Pestañas de archivo de **solo lectura**, con resaltado, números de línea, recarga al cambiar el directorio y soft-wrap por pestaña (`Alt-Z` o control de wrap). Detecta binarios/no disponibles y limita el texto a 400.000 caracteres. Permite abrir el archivo local con el editor gráfico elegido; Zed es el predeterminado si está instalado. No ofrece esta acción para archivos remotos ni en Windows. |
+| `zed-changes` | Panel Git: estado, stage/unstage por archivo, stage all, commit de cambios ya staged, historial de 30 commits y diff de hasta 400 líneas. Incluye búsqueda, cambio, creación y borrado de ramas locales, ramas remotas y protección al borrar ramas con commits no publicados. También incorpora Fetch, Fetch From, Pull, Pull (Rebase), Push, Push To y Force Push con `--force-with-lease` y confirmación. La acción principal se adapta a Publish, Pull, Push o Fetch. Se actualiza cada 10 s y vigila la carpeta local. No lista un repositorio ubicado en el directorio personal ni uno con más de 5.000 cambios. |
+| `zed-quota` | Barras de cuota basadas en `quota-axi --json`, con detalle, refresco y acceso a Settings. Se actualizan cada 120 s y se consideran obsoletas después de 10 min. Soporta máquinas remotas, `percentRemaining` y la ejecución mediante `cmd.exe` en Windows o shell de login en Unix. |
+
+## Configuración
+
+La configuración fija del layout está en [`layouts/zed.json`](layouts/zed.json):
+
+- El panel derecho contiene Files y Changes, mide 320 px por defecto (220–640 px) y empieza oculto.
+- La barra de estado reserva 400 px para cuota y 64 px para sus selectores de panel.
+- Las cuotas ocultan inicialmente `cursor` y `copilot`; para `grok` muestran únicamente la ventana `credits`. La prop `windows` filtra la barra, no el popup de detalle.
+- Los valores elegidos desde **Layout settings** se mantienen como estado compartido de la sesión. Este repositorio no demuestra que persistan entre reinicios.
 
 ## Requisitos
 
-- `quota-axi` para las barras de cuota: `npm install -g quota-axi` (`quota-axi --json` debe responder). Consulta el uso de cada proveedor con las credenciales que ya tengas en la máquina.
+Las barras de cuota necesitan [`quota-axi`](https://github.com/kunchenguid/quota-axi):
 
-## Instalar
-    ./install.sh && herdr-app do layout.switch --name zed
+```bash
+npm install -g quota-axi
+quota-axi --json
+```
 
-`install.sh` copia los mods (no los enlaza): vuelve a ejecutarlo después de editar cualquier cosa en `mods/`.
+El segundo comando debe responder correctamente. Cada proveedor consulta el uso con las credenciales ya disponibles en la máquina.
 
-Verificar mods: `for m in mods/*/; do herdr-app check "$m"; done`
+## Instalación y actualización
 
-## Créditos
+```bash
+./install.sh
+herdr-app do layout.switch --name zed
+```
 
-- **`mods/zed-file/icons/zed.png`** es el icono de la aplicación Zed (© Zed Industries), reducido a 128 px; se usa solo para identificar el editor en el botón «abrir con». Los iconos de VS Code, Cursor y Sublime Text vienen de Material Icon Theme (MIT), con su licencia junto a ellos.
+El instalador crea enlaces simbólicos para `layouts/zed.json`, `layouts/zed.svg` y `themes/tokyo-night.json` dentro de `${HERDR_APP_HOME:-$HOME/.config/herdr-app}`. Los mods se copian como archivos reales porque Herdr no sirve assets mediante enlaces ni permite imports que resuelvan fuera de la carpeta del mod.
 
-- **`mods/zed-file-icons`** es una copia de [`amster93/herdr-file-icons`](https://github.com/amster93/herdr-file-icons) (Apache-2.0), autor: Dave (`amster93`). Cambio hecho aquí: la raíz del panel ya no dibuja su propia tarjeta redondeada con borde (anotado en la cabecera de `main.js`). Conserva su `LICENSE`, `LICENSE-Lucide.txt` y `LICENSE-material-icon-theme.txt`.
-  - Los 1184 iconos son de [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) (MIT, © Material Extensions).
-  - Se basa en el mod `files` de [Herdr](https://github.com/herdrdev/herdr-app) (Apache-2.0).
-  - Ese mismo ajuste de la tarjeta también aparece en el layout [`0OZ/0oz-design`](https://github.com/0OZ/0oz-design) (Apache-2.0), de donde lo conocí.
-- **`mods/zed-panel-switch/icons/`**: iconos de [Lucide](https://lucide.dev) (ISC), ver `NOTICE.txt`.
-- `zed-changes`, `zed-new-space` y los mods de Herdr referenciados (`spaces`, `agents`, `workspace-status`, `worktree`) forman parte o derivan de Herdr (Apache-2.0).
-- **`mods/zed-quota`** es una copia de [`Lakris2407/herdr-quota`](https://github.com/Lakris2407/herdr-quota) (MIT, © 2026 Lakris2407; licencia en el propio mod), que a su vez lee los datos de [`quota-axi`](https://github.com/kunchenguid/quota-axi) de kunchenguid. Se aplicaron aquí seis pull requests abiertos y aún sin fusionar en el original, con sus autores:
-  - [#3](https://github.com/Lakris2407/herdr-quota/pull/3) soporte de `percentRemaining`, [#4](https://github.com/Lakris2407/herdr-quota/pull/4) alternar usado/restante, [#5](https://github.com/Lakris2407/herdr-quota/pull/5) controles del popup y [#6](https://github.com/Lakris2407/herdr-quota/pull/6) cuota en máquinas remotas: [`ruilopesm`](https://github.com/ruilopesm).
-  - [#7](https://github.com/Lakris2407/herdr-quota/pull/7) soporte de shims de npm en Windows y [#8](https://github.com/Lakris2407/herdr-quota/pull/8) límites de Antigravity: [`jotafurtado`](https://github.com/jotafurtado).
-  - Cambios hechos aquí: se resolvieron los conflictos entre los PRs y se renombraron el mod, el overlay y las claves de estado compartido con el prefijo `zed-quota`, y se añadió el prop `windows` (lista de ventanas por proveedor que dibuja la barra, p. ej. `{"grok": ["credits"]}`), con pruebas
+Después de cambiar cualquier archivo de `mods/`, ejecuta `./install.sh` de nuevo. Si un destino de mod es un enlace, el script lo sustituye; esto es relevante si mantienes una instalación personalizada.
+
+Para comprobar los manifiestos de los mods:
+
+```bash
+for m in mods/zed-{title,tabs,new-space,sidebar-footer,settings,panel-switch,file-icons,file,changes,quota}/; do
+  herdr-app check "$m"
+done
+```
+
+## Créditos y licencias
+
+- **`mods/zed-file-icons`** parte de [`amster93/herdr-file-icons`](https://github.com/amster93/herdr-file-icons), distribuido bajo Apache-2.0. A su vez se basa en el mod `files` de Herdr. En este repositorio se eliminó la tarjeta redondeada con borde que envolvía la raíz del panel. Conserva [`LICENSE`](mods/zed-file-icons/LICENSE), [`LICENSE-Lucide.txt`](mods/zed-file-icons/LICENSE-Lucide.txt) y [`LICENSE-material-icon-theme.txt`](mods/zed-file-icons/LICENSE-material-icon-theme.txt).
+  - Sus 1.184 iconos provienen de [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme), bajo MIT (© Material Extensions).
+  - Algunos iconos atribuidos a Lucide/Feather están cubiertos por los avisos de licencia incluidos en el mod.
+- **`mods/zed-file/icons/`** contiene iconos de VS Code, Cursor y Sublime Text procedentes de Material Icon Theme (MIT); su licencia se conserva junto a los iconos. El proyecto atribuye `zed.png` a Zed Industries y lo usa para identificar Zed en el selector «abrir con». No hay un `NOTICE` ni una licencia local específica para ese PNG.
+- Los iconos de **`zed-panel-switch`**, **`zed-changes`** y **`zed-sidebar-footer`** proceden de [Lucide](https://lucide.dev), bajo ISC. Cada mod conserva su `icons/NOTICE.txt`.
+- **`mods/zed-quota`** es una copia de [`Lakris2407/herdr-quota`](https://github.com/Lakris2407/herdr-quota), bajo MIT (© 2026 Lakris2407; licencia incluida en el mod), que consulta los datos de [`quota-axi`](https://github.com/kunchenguid/quota-axi).
+  - Integra los PR abiertos [#3](https://github.com/Lakris2407/herdr-quota/pull/3)–[#6](https://github.com/Lakris2407/herdr-quota/pull/6) de [`ruilopesm`](https://github.com/ruilopesm): `percentRemaining`, alternar usado/restante, controles del popup y cuota en máquinas remotas.
+  - Integra los PR [#7](https://github.com/Lakris2407/herdr-quota/pull/7)–[#8](https://github.com/Lakris2407/herdr-quota/pull/8) de [`jotafurtado`](https://github.com/jotafurtado): shims de npm en Windows y límites de Antigravity.
+  - Cambios locales: resolución de conflictos entre esos PRs, prefijo `zed-quota` para mod, overlay y estado compartido, y la prop `windows` para seleccionar las ventanas que dibuja la barra.
