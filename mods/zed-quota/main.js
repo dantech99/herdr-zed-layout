@@ -9,7 +9,7 @@ import { visibleWindows, stripWindows } from "./quota-windows.js";
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { runQuotaCommand } from "./quota-command.js";
-import { exec, theme, settings, shared, setShared, props, openOverlay, knownAgents, nextCommand, spaces } from "herdr";
+import { exec, run, theme, settings, shared, setShared, props, openOverlay, knownAgents, nextCommand, spaces } from "herdr";
 
 const EVERY = 120000, STALE = 10 * 60000;
 const DEFAULTS = { kinds: { session: true, weekly: true, monthly: true, model: false }, hidden: [], windows: {}, signedOut: false, names: false, remaining: false };
@@ -113,6 +113,7 @@ export default class Quota extends View {
       cx.notify();
     });
     if (props()?.menu) return;
+    setShared("zed-quota.start", props() ?? {}); // the settings window needs the layout's starting options
     this.machine = quotaMachine();
     this.refresh(cx);
     cx.timer.every(EVERY, cx => this.refresh(cx));
@@ -226,16 +227,6 @@ export default class Quota extends View {
       .when(Boolean(error), el => el.child(div().px(8).py(4).text_size(11).text_color(level(95)).child(error)))
       .children(details)
       .child(div().mx(8).my(6).h(1).bg(t.border))
-      .child(toggle("Show remaining instead of used", o.remaining, () => setOptions({ remaining: !o.remaining }), "remaining"))
-      .child(heading("Limits to show in the status bar"))
-      .children(KINDS.map(([kind, label]) => toggle(label, o.kinds[kind], () => setOptions({ kinds: { ...o.kinds, [kind]: !o.kinds[kind] } }), `kind-${kind}`)))
-      .child(div().mx(8).my(6).h(1).bg(t.border))
-      .child(heading("Models to track"))
-      .children(all.map(p => toggle(p.label, !o.hidden.includes(p.id),
-        () => setOptions({ hidden: o.hidden.includes(p.id) ? o.hidden.filter(x => x !== p.id) : [...o.hidden, p.id] }), `prov-${p.id}`)))
-      .when(all.some(p => p.id === "agy"), el => el.child(toggle("Antigravity: Claude/GPT limits", o.agyClaudeGpt !== false,
-        () => setOptions({ agyClaudeGpt: o.agyClaudeGpt === false }), "agy-claude-gpt")))
-      .child(toggle("Signed-out providers", o.signedOut, () => setOptions({ signedOut: !o.signedOut }), "signed-out"))
-      .child(toggle("Provider names", o.names, () => setOptions({ names: !o.names }), "names"));
+      .child(toggle("Settings…", false, () => { run("overlay.close"); run("mod.open", { name: "zed-settings" }); }, "open-settings"));
   }
 }
