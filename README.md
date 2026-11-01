@@ -36,4 +36,3 @@ Verificar mods: `for m in mods/*/; do herdr-app check "$m"; done`
   - [#3](https://github.com/Lakris2407/herdr-quota/pull/3) soporte de `percentRemaining`, [#4](https://github.com/Lakris2407/herdr-quota/pull/4) alternar usado/restante, [#5](https://github.com/Lakris2407/herdr-quota/pull/5) controles del popup y [#6](https://github.com/Lakris2407/herdr-quota/pull/6) cuota en máquinas remotas: [`ruilopesm`](https://github.com/ruilopesm).
   - [#7](https://github.com/Lakris2407/herdr-quota/pull/7) soporte de shims de npm en Windows y [#8](https://github.com/Lakris2407/herdr-quota/pull/8) límites de Antigravity: [`jotafurtado`](https://github.com/jotafurtado).
   - Cambios hechos aquí: se resolvieron los conflictos entre los PRs y se renombraron el mod, el overlay y las claves de estado compartido con el prefijo `zed-quota`, y se añadió el prop `windows` (lista de ventanas por proveedor que dibuja la barra, p. ej. `{"grok": ["credits"]}`), con pruebas
-un cambio
