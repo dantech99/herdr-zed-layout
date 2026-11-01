@@ -4,7 +4,7 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -87,6 +87,7 @@ export default class ZedChanges extends View {
           ? log.stdout.split("\n").filter(Boolean).map(line => { const [hash, subject] = line.split("\0"); return { hash, subject }; })
           : [];
         if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; this.lines = []; }
+        if (this.diff) this.selected = diffTarget(this.selected, this.files);
         this.error = null;
         this.watch(root, cx);
         if (this.diff && this.selected) await this.loadDiff(this.selected, context);
@@ -126,6 +127,12 @@ export default class ZedChanges extends View {
     cx.notify();
   }
 
+  toggleDiff(cx) {
+    this.diff = !this.diff;
+    const path = this.diff ? diffTarget(this.selected, this.files) : null;
+    if (path) this.pick(path, cx); else cx.notify();
+  }
+
   git(args, cx, after) {
     if (!this.root || this.busy) return;
     const context = this.context;
@@ -163,7 +170,7 @@ export default class ZedChanges extends View {
         .child(this.chip("zed-history-tab", "History", this.tab === "history", cx => { this.tab = "history"; cx.notify(); }, t))
         .child(div().flex_1())
         .when(this.tab === "changes", el => el
-          .child(this.chip("zed-view-diff", "View Diff", this.diff, cx => { this.diff = !this.diff; if (this.diff && this.selected) this.pick(this.selected, cx); else cx.notify(); }, t))
+          .child(this.chip("zed-view-diff", "View Diff", this.diff, cx => this.toggleDiff(cx), t))
           .child(this.chip("zed-stage-all", "Stage All", false, cx => this.git(stageAllPlan(), cx), t))))
       .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
         .when(this.tab === "history", el => el.children(this.history.map(commit =>
@@ -181,12 +188,13 @@ export default class ZedChanges extends View {
               .on_click((_e, cx) => { cx.stop_propagation(); this.git(stagePlan(file), cx); }))
             .child(div().w(12).text_size(11).text_color(letter(file.xy) === "D" ? t.ansi1 : letter(file.xy) === "A" ? t.ansi2 : t.blocked).child(letter(file.xy)))
             .child(div().flex_1().min_w(0).truncate().child(file.path)))))
-        .when(this.tab === "changes" && this.diff && this.lines.length, el => el.child(v_flex().border_t(1).border_color(t.border).py(4)
-          .children(this.lines.map((line, i) => div().id(`zed-diff-${i}`).px(10).h(18).flex_none().truncate().text_size(11)
-            .text_color(line.startsWith("+") ? t.ansi2 : line.startsWith("-") ? t.ansi1 : t.dim).child(line)))))
         .when(this.tab === "changes" && !this.files.length, el => el.child(div().flex_1().flex().items_center().justify_center().text_color(t.dim)
           .child(this.error || (this.loading ? "Loading…" : this.root ? "No changes to commit" : "No folder"))))
         .when(this.tab === "history" && !this.history.length, el => el.child(div().p(12).text_color(t.dim).child(this.loading ? "Loading…" : "No commits"))))
+      .when(this.tab === "changes" && this.diff, el => el.child(v_flex().id("zed-diff").h(220).flex_none().min_h(0).border_t(1).border_color(t.border).py(4).overflow_y_scrollbar()
+        .when(this.lines.length === 0, el => el.child(div().p(10).text_size(12).text_color(t.dim).child(this.files.length ? "Loading…" : "No changes to diff")))
+        .children(this.lines.map((line, i) => div().id(`zed-diff-${i}`).px(10).h(18).flex_none().truncate().text_size(11)
+          .text_color(line.startsWith("+") ? t.ansi2 : line.startsWith("-") ? t.ansi1 : t.dim).child(line)))))
       .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
       .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
         .child(div().text_size(12).text_color(t.muted).child(this.branch || "detached"))
