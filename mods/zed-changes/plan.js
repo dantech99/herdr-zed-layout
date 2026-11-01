@@ -43,3 +43,25 @@ export function branchLabel(symbolic, hasCommits) {
 export function tooManyChanges(root, home, count) {
   return (Boolean(home) && root === home) || count > MAX_CHANGES;
 }
+
+// `git for-each-ref` format for the branch picker: "<* or space>\t<full ref>".
+export const BRANCH_FORMAT = "%(HEAD)%09%(refname)";
+
+// Local branches (as git sorted them), then remote branches that have no local one yet.
+export function parseBranches(text) {
+  const local = [], remote = [];
+  for (const line of String(text).split("\n")) {
+    const [head, ref] = line.split("\t");
+    if (!ref) continue;
+    if (ref.startsWith("refs/heads/")) local.push({ name: ref.slice(11), current: head === "*", remote: null });
+    else if (ref.startsWith("refs/remotes/")) {
+      const [name, ...rest] = ref.slice(13).split("/"), branch = rest.join("/");
+      if (branch && branch !== "HEAD") remote.push({ name: branch, current: false, remote: name });
+    }
+  }
+  const have = new Set(local.map(b => b.name)), seen = new Set();
+  return [...local, ...remote.filter(b => !have.has(b.name) && !seen.has(b.name) && seen.add(b.name))];
+}
+
+// A name starting with "-" must not be read as an option.
+export const switchArgs = name => name.startsWith("-") ? ["switch", "--", name] : ["switch", name];

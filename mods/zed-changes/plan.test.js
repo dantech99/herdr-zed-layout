@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -46,4 +46,25 @@ test("tooManyChanges flags the home folder and very large change sets", () => {
   assert.equal(tooManyChanges("/home/u/proj", "/home/u", MAX_CHANGES), false);
   assert.equal(tooManyChanges("/home/u/proj", "/home/u", MAX_CHANGES + 1), true);
   assert.equal(tooManyChanges("/srv/x", null, 0), false);
+});
+
+test("parseBranches lists local branches, then remote-only ones, and marks the current", () => {
+  const out = [
+    " \trefs/heads/feat/x", "*\trefs/heads/main",
+    " \trefs/remotes/origin/HEAD", " \trefs/remotes/origin/main", " \trefs/remotes/origin/hotfix",
+    " \trefs/remotes/upstream/feat/x", " \trefs/tags/v1",
+  ].join("\n");
+  assert.deepEqual(parseBranches(out), [
+    { name: "feat/x", current: false, remote: null },
+    { name: "main", current: true, remote: null },
+    { name: "hotfix", current: false, remote: "origin" },
+  ]);
+  assert.deepEqual(parseBranches(""), []);
+});
+
+test("switchArgs switches by name and BRANCH_FORMAT asks for HEAD and the full ref", () => {
+  assert.deepEqual(switchArgs("feat/x"), ["switch", "feat/x"]);
+  assert.deepEqual(switchArgs("-weird"), ["switch", "--", "-weird"]);
+  assert.match(BRANCH_FORMAT, /%\(HEAD\)/);
+  assert.match(BRANCH_FORMAT, /%\(refname\)/);
 });

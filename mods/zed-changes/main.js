@@ -3,8 +3,8 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges } from "./plan.js";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay } from "herdr";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -17,6 +17,7 @@ const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.a
 
 export default class ZedChanges extends View {
   init(_given, cx) {
+    if (props()?.menu) { this.menu = props(); this.menuError = null; return; } // the branch popup: this same mod draws it
     this.files = [];
     this.history = [];
     this.tab = "changes";
@@ -137,6 +138,39 @@ export default class ZedChanges extends View {
     cx.notify();
   }
 
+  // Lists the branches and opens the picker as a popup under the branch name.
+  async openBranches() {
+    if (!this.root || this.tooMany) return;
+    const r = await exec("git", [...READ, "for-each-ref", "--sort=-committerdate", `--format=${BRANCH_FORMAT}`, "refs/heads", "refs/remotes"], { cwd: this.root, on: this.on }).catch(() => null);
+    const branches = r?.code === 0 ? parseBranches(r.stdout) : [];
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 300, height: Math.min(380, 76 + Math.max(branches.length, 1) * 32), props: { menu: true, root: this.root, on: this.on, branches } });
+  }
+
+  async pickBranch(branch, cx) {
+    if (branch.current) { run("overlay.close"); return; }
+    const { root, on } = this.menu;
+    const r = await exec("git", [...READ, ...switchArgs(branch.name)], { cwd: root, on }).catch(e => ({ code: 1, stderr: String(e.message || e) }));
+    if (r.code === 0) { run("overlay.close"); return; }
+    this.menuError = (r.stderr || "git switch failed").trim().split("\n").slice(0, 3).join(" ");
+    cx.notify();
+  }
+
+  renderMenu() {
+    const t = theme(), { branches } = this.menu;
+    const row = b => h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).h(32).px(10).gap(8).items_center().rounded(8).cursor_pointer().text_size(12.5)
+      .text_color(b.current ? t.foreground : t.muted).hover(s => s.bg(t.hover)).when(b.current, el => el.bg(t.selected))
+      .on_click((_e, cx) => this.pickBranch(b, cx))
+      .child(div().w(14).flex_none().text_color(t.accent).child(b.current ? "✓" : ""))
+      .child(div().flex_1().min_w(0).truncate().child(b.name))
+      .when(Boolean(b.remote), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(b.remote)));
+    return v_flex().id("zed-branches").size_full().p(6).bg(t.popover)
+      .child(div().px(10).pt(6).pb(4).flex_none().text_size(11.5).text_color(t.dim).child("Switch branch"))
+      .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
+        .children(branches.map(row))
+        .when(branches.length === 0, el => el.child(div().px(10).py(8).text_size(12).text_color(t.dim).child("No branches"))))
+      .when(Boolean(this.menuError), el => el.child(div().flex_none().px(10).py(6).text_size(11).text_color(t.ansi1).child(this.menuError)));
+  }
+
   toggleDiff(cx) {
     this.diff = !this.diff;
     const path = this.diff ? diffTarget(this.selected, this.files) : null;
@@ -172,6 +206,7 @@ export default class ZedChanges extends View {
   }
 
   render() {
+    if (this.menu) return this.renderMenu();
     const t = theme();
     const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";
     return v_flex().id("zed-changes").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).text_size(13).track_focus(this.handle)
@@ -207,7 +242,9 @@ export default class ZedChanges extends View {
           .text_color(line.startsWith("+") ? t.ansi2 : line.startsWith("-") ? t.ansi1 : t.dim).child(line)))))
       .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
       .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
-        .child(div().text_size(12).text_color(t.muted).child(this.branch || "detached"))
+        .child(h_flex().child(div().id("zed-branch").px(6).py(2).rounded(5).text_size(12).text_color(t.muted)
+          .when(Boolean(this.root) && !this.tooMany, el => el.cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.openBranches()))
+          .child(`${this.branch || "detached"}${this.root && !this.tooMany ? " ▾" : ""}`)))
         .child(div().h(112).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .child(Textarea.new(this.input).size_full().text_size(12).text_color(t.foreground)))
