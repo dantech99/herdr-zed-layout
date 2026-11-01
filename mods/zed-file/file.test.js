@@ -67,7 +67,7 @@ test("launchArgs detaches the editor and passes the path untouched", () => {
   assert.match(args[1], /nohup "\$0" "\$@"/);
 });
 
-import { editorIcon } from "./file.js";
+import { editorIcon, preferredEditor } from "./file.js";
 
 test("editorIcon picks the Material icon by theme, or null", () => {
   assert.equal(editorIcon("code", true), "mods/zed-file/icons/vscode.svg");
@@ -75,4 +75,13 @@ test("editorIcon picks the Material icon by theme, or null", () => {
   assert.equal(editorIcon("cursor", true), "mods/zed-file/icons/cursor.svg");
   assert.equal(editorIcon("cursor", false), "mods/zed-file/icons/cursor_light.svg");
   assert.equal(editorIcon("zed", true), null);
+});
+
+test("preferredEditor honours the saved choice, defaults to Zed, then falls back", () => {
+  const found = [{ cmd: "code", label: "VS Code" }, { cmd: "zeditor", label: "Zed" }];
+  assert.equal(preferredEditor(found, undefined).cmd, "zeditor");
+  assert.equal(preferredEditor(found, "VS Code").cmd, "code");
+  assert.equal(preferredEditor(found, "Cursor").cmd, "zeditor");
+  assert.equal(preferredEditor([{ cmd: "kate", label: "Kate" }], "Zed").cmd, "kate");
+  assert.equal(preferredEditor([], "Zed"), null);
 });

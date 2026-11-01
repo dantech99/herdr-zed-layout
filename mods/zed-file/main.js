@@ -6,7 +6,7 @@
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { props, run, exec, openOverlay, window, setShared, readTextFile, writeTextFile, watchFolder, shared, theme, settings, home } from "herdr";
-import { languageFor, prepare, shortPath, isEditable, statusLabel, detectScript, parseFound, launchArgs, editorIcon } from "./file.js";
+import { languageFor, prepare, shortPath, isEditable, statusLabel, detectScript, parseFound, launchArgs, editorIcon, preferredEditor } from "./file.js";
 
 export default class ZedFile extends View {
   init(_given, cx) {
@@ -154,8 +154,14 @@ export default class ZedFile extends View {
         .child(this.icon ? image(this.icon).size(14).flex_none() : div())
         .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(this.file ? shortPath(this.file, home()) : ""))
         .when(s.truncated, el => el.child(div().text_color(t.blocked).child("truncated")))
-        .when(this.state.kind === "ok" && !this.on && this.file && (shared("zed-file.editors") ?? []).length > 0, el => el.child(div().id("open-in").cursor_pointer().text_color(t.dim)
-          .on_click(() => this.openMenu()).child("open in…")))
+        .when(this.state.kind === "ok" && !this.on && this.file && (shared("zed-file.editors") ?? []).length > 0, el => {
+          const editors = shared("zed-file.editors"), main = preferredEditor(editors, shared("zed-file.options")?.editor);
+          return el.child(h_flex().id("open-in").flex_none().items_center().text_color(t.dim)
+            .child(div().id("open-main").cursor_pointer().hover(s => s.text_color(t.foreground))
+              .on_click(() => exec("sh", launchArgs(main.cmd, this.file)).catch(() => {})).child(`open in ${main.label}`))
+            .child(div().id("open-menu").px(4).cursor_pointer().hover(s => s.text_color(t.foreground))
+              .on_click(() => this.openMenu()).child("▾")));
+        })
         .when(this.state.kind === "ok", el => el.child(div().id("wrap").cursor_pointer().text_color(this.wrap ? t.foreground : t.dim)
           .on_click((_e, cx) => this.toggleWrap(cx)).child("wrap")))
         .child(div().text_color(this.conflict ? t.blocked : t.dim).child(label)))

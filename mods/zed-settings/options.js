@@ -15,7 +15,7 @@ export function toggleHidden(hidden, id) {
 }
 
 export function fileOptions(saved) {
-  return { wrap: false, ...(saved ?? {}) };
+  return { wrap: false, editor: "Zed", ...(saved ?? {}) };
 }
 
 // The window's schema: each item names its category, its text and how it reads and patches its store
@@ -73,4 +73,13 @@ export function matches(item, query) {
 export function visible(items, category, query) {
   const searching = String(query ?? "").trim() !== "";
   return items.filter(item => (searching || item.category === category) && matches(item, query));
+}
+
+// The editor choice, from the editors found on the machine (null while none is known).
+export function editorItem(editors) {
+  const options = [...new Set(editors.map(e => e.label))];
+  if (!options.length) return null;
+  return { id: "editor", kind: "choice", store: "file", category: "editor", label: "Editor", options,
+    description: "The editor the “open in” button of a file tab uses. Zed by default.",
+    get: f => f.editor, patch: (_f, value) => ({ editor: value }) };
 }

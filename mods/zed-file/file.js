@@ -80,3 +80,8 @@ export function editorIcon(cmd, dark) {
   const name = cmd.startsWith("code") ? "vscode" : cmd === "cursor" ? (dark ? "cursor" : "cursor_light") : cmd === "subl" ? "sublime" : null;
   return name && `mods/zed-file/icons/${name}.svg`;
 }
+
+// The editor the header button opens: the saved choice (by label), else Zed, else the first found.
+export function preferredEditor(found, saved) {
+  return found.find(e => e.label === (saved ?? "Zed")) ?? found.find(e => e.label === "Zed") ?? found[0] ?? null;
+}
