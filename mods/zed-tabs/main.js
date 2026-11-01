@@ -1,10 +1,48 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme } from "herdr";
+import { spaces, panes, run, openOverlay, theme, layout } from "herdr";
+
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
 
 export default class ZedTabs extends View {
   init() {
     this.pressed = null;
+    this.panels = JSON.parse(localStorage.getItem("zed.panels") ?? "{}");
+  }
+
+  // The right panel is remembered per space. Closed stays closed.
+  syncPanel(space, panel, body) {
+    if (!space || !panel) return;
+    const now = panel.hidden ? null : body?.active ?? null;
+    if (space.id !== this.space) {
+      const first = this.space === undefined;
+      this.space = space.id;
+      this.pending = null;
+      if (!(first && !(space.id in this.panels))) {
+        const stored = this.panels[space.id] ?? null;
+        const want = stored === "files" || stored === "changes" ? stored : null;
+        if (want !== now) {
+          this.pending = { want, until: Date.now() + 1000 };
+          if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
+          else run("layout.hide", { id: "panel" });
+          return;
+        }
+      }
+    }
+    if (this.pending) {
+      if (this.pending.want !== now && Date.now() < this.pending.until) return;
+      this.pending = null;
+    }
+    if (this.panels[space.id] === now) return;
+    this.panels[space.id] = now;
+    localStorage.setItem("zed.panels", JSON.stringify(this.panels));
   }
 
   render() {
@@ -51,10 +89,27 @@ export default class ZedTabs extends View {
             .child(svg("mods/pane/close.svg").size(11))));
     };
 
+    const panel = find(layout(), "panel"), body = find(layout(), "panel-body");
+    this.syncPanel(space, panel, body);
+    const panelButton = (id, label, icon) => {
+      const on = panel && !panel.hidden && body?.active === id;
+      return h_flex().id(`zed-panel-${id}`).h(24).px(8).mr(4).gap(5).flex_none().items_center().rounded(4).text_size(12)
+        .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
+        .hover(s => s.bg(t.hover))
+        .on_mouse_down("left", stop)
+        .on_click(() => {
+          if (on) run("layout.hide", { id: "panel" });
+          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+        })
+        .child(svg(icon).size(14)).child(label);
+    };
+
     return h_flex().size_full().min_w(0).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scrollbar().children(shown.map(item)))
+      .child(panelButton("files", "Files", "mods/files/file.svg"))
+      .child(panelButton("changes", "Changes", "mods/changes/changes.svg"))
       .child(div().id("zed-tab-new").size(24).mr(6).flex_none().flex().items_center().justify_center().rounded(4)
         .text_color(t.muted)
         .hover(s => s.bg(t.hover).text_color(t.foreground))

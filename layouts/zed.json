@@ -83,6 +83,26 @@
               }
             }
           ]
+        },
+        {
+          "id": "panel",
+          "type": "column",
+          "hidden": true,
+          "size": { "px": 320 },
+          "min": 220,
+          "max": 640,
+          "background": "chrome",
+          "children": [
+            {
+              "id": "panel-body",
+              "type": "stack",
+              "active": "files",
+              "children": [
+                { "id": "files", "type": "block", "content": { "mod": "zed-files" } },
+                { "id": "changes", "type": "block", "content": { "mod": "zed-changes" } }
+              ]
+            }
+          ]
         }
       ]
     },
