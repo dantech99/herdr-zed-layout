@@ -3,8 +3,8 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight } from "./plan.js";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -21,8 +21,11 @@ async function listBranches(root, on) {
   return r?.code === 0 ? parseBranches(r.stdout) : [];
 }
 
+const SYNCING = { fetch: "Fetching…", "fetch-from": "Fetching…", pull: "Pulling…", "pull-rebase": "Pulling…", push: "Pushing…", "push-to": "Pushing…", "force-push": "Pushing…" };
+
 export default class ZedChanges extends View {
   init(_given, cx) {
+    if (props()?.sync) { this.syncMenu = props(); this.menuError = null; this.pending = null; this.syncing = null; return; } // the sync popup: this same mod draws it
     if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete modal: this same mod draws it
     if (props()?.menu) { // the branch popup: this same mod draws it
       this.menu = props(); this.menuError = null; this.menuNote = null;
@@ -38,6 +41,11 @@ export default class ZedChanges extends View {
     this.diff = false;
     this.selected = null;
     this.tooMany = false;
+    this.remotes = [];
+    this.upstream = false;
+    this.ahead = 0;
+    this.behind = 0;
+    this.syncing = null;
     this.lines = [];
     this.branch = "";
     this.message = "";
@@ -91,14 +99,16 @@ export default class ZedChanges extends View {
         const at = args => exec("git", [...READ, ...args], { cwd: root, on: here.on });
         if (!here.on && tooManyChanges(root, home(), 0)) {
           // Never run `status` here: it would walk the whole home directory.
-          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.lines = [];
+          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.lines = []; this.remotes = [];
           this.branch = "—"; this.tooMany = true; this.error = "Your home folder is a git repository: too many changes to list";
           return;
         }
-        const [status, branch, log] = await Promise.all([
+        const [status, branch, log, remotes, counts] = await Promise.all([
           at(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
           at(["symbolic-ref", "--short", "-q", "HEAD"]),
           at(["log", "-30", "--pretty=format:%h%x00%s"]),
+          at(["remote"]),
+          at(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]),
         ]);
         if (key() !== context) return;
         if (status.code !== 0) throw new Error(status.stderr);
@@ -108,6 +118,9 @@ export default class ZedChanges extends View {
           ? log.stdout.split("\n").filter(Boolean).map(line => { const [hash, subject] = line.split("\0"); return { hash, subject }; })
           : [];
         this.branch = branchLabel(branch.code === 0 ? branch.stdout.trim() : "", log.code === 0);
+        this.remotes = remotes.code === 0 ? remotes.stdout.split("\n").map(r => r.trim()).filter(Boolean) : [];
+        const ab = counts.code === 0 ? parseAheadBehind(counts.stdout) : null; // fails without an upstream
+        this.upstream = Boolean(ab); this.ahead = ab?.ahead ?? 0; this.behind = ab?.behind ?? 0;
         const all = parseStatus(status.stdout);
         this.tooMany = tooManyChanges(root, home(), all.length);
         this.files = this.tooMany ? [] : all.slice(0, 1000);
@@ -181,6 +194,59 @@ export default class ZedChanges extends View {
     if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
   }
 
+  // --- Fetch / pull / push. The button beside the branch name runs the likely one; its ▾ opens a popup.
+  openSyncMenu() {
+    if (!this.root || this.tooMany) return;
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 250, height: 280, props: { sync: true, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branch } });
+  }
+
+  // Runs a menu entry. In the popup a failure stays visible there; a success closes it. Either way the
+  // outcome is published as `zed-changes.result`, which the panel shows for a few seconds.
+  async doSync(op, remote, cx) {
+    const src = this.syncMenu ?? this, args = syncArgs(op, { remote, upstream: src.upstream });
+    if (!args || this.syncing) return;
+    this.syncing = SYNCING[op]; this.menuError = null; cx.notify();
+    const r = await exec("git", [...READ, ...args], { cwd: src.root, on: src.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    this.syncing = null;
+    const text = summarize(r.stdout, r.stderr);
+    setShared("zed-changes.result", { text, ok: r.code === 0, at: Date.now() });
+    if (this.syncMenu) { if (r.code === 0) run("overlay.close", { id: this.syncMenu.overlay }); else { this.menuError = text; this.pending = null; } }
+    else this.refresh(cx);
+    cx.notify();
+  }
+
+  requestSync(op, cx) {
+    if (needsRemote(op)) { this.pending = op; cx.notify(); return; }
+    if (isForce(op)) {
+      const { root, on, overlay, upstream, branch } = this.syncMenu;
+      run("overlay.close", { id: overlay });
+      openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 200, props: {
+        confirm: true, sync: true, root, on, args: syncArgs(op, { upstream }),
+        title: `Force push ${branch}?`,
+        body: "This overwrites the remote branch with yours. It uses --force-with-lease, so git refuses if someone pushed since your last fetch; commits only the remote has are lost.",
+      } });
+      return;
+    }
+    cx.spawn(async cx => this.doSync(op, undefined, cx));
+  }
+
+  renderSyncMenu() {
+    const t = theme(), { remotes } = this.syncMenu;
+    const row = (id, label, act, hint) => h_flex().id(id).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .text_color(this.syncing ? t.dim : t.foreground).hover(s => s.bg(t.selected)).on_click((_e, cx) => { if (!this.syncing) act(cx); })
+      .child(div().flex_1().min_w(0).truncate().child(label))
+      .when(Boolean(hint), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(hint)));
+    const body = this.pending
+      ? [div().px(10).pt(6).pb(4).text_size(11.5).text_color(t.dim).child(this.pending === "fetch-from" ? "Fetch from" : "Push to"),
+        ...remotes.map(r => row(`sync-remote-${r}`, r, cx => cx.spawn(async cx => this.doSync(this.pending, r, cx)))),
+        row("sync-back", "Back", cx => { this.pending = null; cx.notify(); })]
+      : SYNC_MENU.map(entry => entry === "-" ? div().h(1).my(4).bg(t.border) : row(`sync-${entry[0]}`, entry[1], cx => this.requestSync(entry[0], cx)));
+    return v_flex().id("zed-sync").w_full().p(6).bg(t.popover)
+      .when(Boolean(this.syncing), el => el.child(div().px(10).py(6).text_size(12).text_color(t.accent).child(this.syncing)))
+      .children(body)
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)));
+  }
+
   // Handlers below take the `cx` of a `cx.spawn` task: an event handler's own `cx` is only valid until
   // the handler returns, so `cx.notify()` after an `await` on it never redraws.
   // Enter in the search box: create the typed name if it is new, else switch to the first match.
@@ -196,7 +262,11 @@ export default class ZedChanges extends View {
     if (count === 0) { await this.deleteNow(branch.name, cx); return; }
     const { root, on, overlay } = this.menu;
     run("overlay.close", { id: overlay });
-    openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: { confirm: true, root, on, branch: branch.name, count } });
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: {
+      confirm: true, root, on, args: deleteArgs(branch.name),
+      title: `Delete branch ${branch.name}?`,
+      body: `It has ${count} commit${count === 1 ? "" : "s"} that no remote has. They will be lost from the branch; git reflog can still recover them for a while.`,
+    } });
   }
 
   async deleteNow(name, cx) {
@@ -209,23 +279,25 @@ export default class ZedChanges extends View {
     cx.notify();
   }
 
-  // The modal: accept deletes the branch with its unpushed commits, cancel closes it.
-  async acceptDelete(cx) {
-    const r = await this.runGit(deleteArgs(this.dialog.branch));
-    if (r.code === 0) run("overlay.close", { id: this.dialog.overlay }); else this.fail(r, cx);
+  // The modal: accept runs the command it was opened with (delete a branch, force push), cancel closes it.
+  async acceptConfirm(cx) {
+    const r = await this.runGit(this.dialog.args);
+    if (r.code !== 0) { this.fail(r, cx); return; }
+    if (this.dialog.sync) setShared("zed-changes.result", { text: summarize(r.stdout, r.stderr), ok: true, at: Date.now() });
+    run("overlay.close", { id: this.dialog.overlay });
   }
 
   renderDialog() {
-    const t = theme(), { branch, count } = this.dialog;
+    const t = theme(), { title, body } = this.dialog;
     const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
       .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
-    return v_flex().id("zed-delete-branch").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
-      .child(div().text_size(15).font_semibold().child(`Delete branch ${branch}?`))
-      .child(div().text_size(12.5).text_color(t.muted).child(`It has ${count} commit${count === 1 ? "" : "s"} that no remote has. They will be lost from the branch; git reflog can still recover them for a while.`))
+    return v_flex().id("zed-confirm").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child(title))
+      .child(div().text_size(12.5).text_color(t.muted).child(body))
       .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
       .child(h_flex().gap(8).justify_end().pt(4)
-        .child(button("delete-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: this.dialog.overlay })))
-        .child(button("delete-accept", "Accept", t.ansi1, t.background, cx => cx.spawn(async cx => this.acceptDelete(cx)))));
+        .child(button("confirm-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: this.dialog.overlay })))
+        .child(button("confirm-accept", "Accept", t.ansi1, t.background, cx => cx.spawn(async cx => this.acceptConfirm(cx)))));
   }
 
   // The branch popup, laid out like Zed's: sections, two-line rows (name, then author · age · subject),
@@ -300,8 +372,11 @@ export default class ZedChanges extends View {
 
   render() {
     if (this.dialog) return this.renderDialog();
+    if (this.syncMenu) return this.renderSyncMenu();
     if (this.menu) return this.renderMenu();
     const t = theme();
+    const act = this.root && !this.tooMany ? primaryAction({ remotes: this.remotes, upstream: this.upstream, ahead: this.ahead, behind: this.behind }) : null;
+    const result = shared("zed-changes.result"), showResult = result && Date.now() - result.at < 12000;
     const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";
     return v_flex().id("zed-changes").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .child(h_flex().h(34).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border)
@@ -334,11 +409,20 @@ export default class ZedChanges extends View {
         .when(this.lines.length === 0, el => el.child(div().p(10).text_size(12).text_color(t.dim).child(this.files.length ? "Loading…" : "No changes to diff")))
         .children(this.lines.map((line, i) => div().id(`zed-diff-${i}`).px(10).h(18).flex_none().truncate().text_size(11)
           .text_color(line.startsWith("+") ? t.ansi2 : line.startsWith("-") ? t.ansi1 : t.dim).child(line)))))
+      .when(Boolean(showResult), el => el.child(div().px(10).py(4).text_size(11).text_color(result.ok ? t.muted : t.ansi1).child(result.text)))
       .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
       .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
-        .child(h_flex().child(div().id("zed-branch").px(6).py(2).rounded(5).text_size(12).text_color(t.muted)
-          .when(Boolean(this.root) && !this.tooMany, el => el.cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.openBranches()))
-          .child(`${this.branch || "detached"}${this.root && !this.tooMany ? " ▾" : ""}`)))
+        .child(h_flex().items_center()
+          .child(div().id("zed-branch").px(6).py(2).rounded(5).text_size(12).text_color(t.muted)
+            .when(Boolean(this.root) && !this.tooMany, el => el.cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.openBranches()))
+            .child(`${this.branch || "detached"}${this.root && !this.tooMany ? " ▾" : ""}`))
+          .child(div().flex_1())
+          .when(Boolean(act), el => el.child(h_flex().items_center().rounded(5).bg(t.raised).text_size(12)
+            .child(div().id("zed-sync-main").h(24).px(8).flex().items_center().rounded(5).cursor_pointer().text_color(this.syncing ? t.dim : t.foreground)
+              .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!this.syncing) cx.spawn(async cx => this.doSync(act.op, undefined, cx)); })
+              .child(this.syncing ?? act.label))
+            .child(div().id("zed-sync-menu").h(24).px(6).flex().items_center().rounded(5).cursor_pointer().text_color(t.muted)
+              .hover(s => s.bg(t.hover)).on_click(() => this.openSyncMenu()).child("▾")))))
         .child(div().h(112).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .child(Textarea.new(this.input).size_full().text_size(12).text_color(t.foreground)))
