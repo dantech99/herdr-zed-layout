@@ -20,7 +20,7 @@ function location() {
 const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
-const DIR = "mods/file-icons";
+const DIR = "mods/zed-file-icons";
 
 // Material Icon Theme's rules, as VS Code applies them: names match case-insensitively; a
 // path rule (".github/workflows") beats a name, a name beats an extension, and the longest
