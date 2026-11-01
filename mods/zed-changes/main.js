@@ -1,11 +1,10 @@
 // Git panel: Changes stages and commits what is tracked. History is read-only.
 // View Diff shows the selected file. Commit tracked never runs git add.
-// Generate starts an installed agent on its default model.
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, knownAgents, run, openOverlay, closeOverlay, props } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, commitTask } from "./plan.js";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme } from "herdr";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -17,19 +16,7 @@ const key = () => JSON.stringify(location());
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 
 export default class ZedChanges extends View {
-  init(given, cx) {
-    if (given?.picker || props()?.picker) {
-      this.picker = true;
-      this.agents = [];
-      this.handle = cx.focus_handle();
-      const on = given?.on ?? props()?.on ?? null;
-      cx.spawn(async cx => {
-        try { this.agents = (await knownAgents({ on })).filter(agent => agent.installed); }
-        catch { this.failed = true; }
-        cx.notify();
-      });
-      return;
-    }
+  init(_given, cx) {
     this.files = [];
     this.history = [];
     this.tab = "changes";
@@ -161,49 +148,6 @@ export default class ZedChanges extends View {
     this.git(plan.args, cx, () => { this.message = ""; this.input.set_value(""); });
   }
 
-  generate(cx) {
-    if (!this.root) { this.note = "No repository."; cx.notify(); return; }
-    const space = spaces().find(item => item.active);
-    openOverlay({
-      mod: "zed-changes",
-      kind: "popup",
-      width: 260,
-      height: 320,
-      props: {
-        picker: true,
-        folder: this.root,
-        space: space?.id,
-        staged: this.files.some(file => file.staged),
-        on: this.on ?? null,
-      },
-    });
-  }
-
-  startAgent(agent) {
-    const given = props();
-    run("tab.new", {
-      name: agent.name,
-      space: given.space,
-      folder: given.folder,
-      argv: agent.run,
-      task: commitTask({ staged: Boolean(given.staged) }),
-    });
-    closeOverlay(given.overlay);
-  }
-
-  agentsPopup() {
-    const t = theme();
-    const agents = this.agents ?? [];
-    return v_flex().id("zed-generate-popup").size_full().p(8).gap(6).bg(t.popover).text_size(13).track_focus(this.handle)
-      .child(div().px(4).font_semibold().text_color(t.foreground).child("Generate commit"))
-      .child(div().px(4).text_size(11).text_color(t.dim).child("Default model"))
-      .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(agents.map(agent =>
-        h_flex().id(`zed-agent-${agent.key}`).h(28).px(8).gap(8).items_center().rounded(6).cursor_pointer()
-          .hover(s => s.bg(t.hover)).on_click(() => this.startAgent(agent))
-          .child(div().flex_1().truncate().text_color(t.foreground).child(agent.name)))))
-      .when(!agents.length, el => el.child(div().px(4).text_color(t.dim).child(this.failed ? "Could not load agents" : "Checking installed agents…")));
-  }
-
   chip(id, label, on, action, t) {
     return div().id(id).h(24).px(8).flex().items_center().rounded(5).cursor_pointer().flex_none().text_size(12)
       .bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
@@ -211,7 +155,6 @@ export default class ZedChanges extends View {
   }
 
   render() {
-    if (this.picker || props()?.picker) return this.agentsPopup();
     const t = theme();
     const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";
     return v_flex().id("zed-changes").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).text_size(13).track_focus(this.handle)
@@ -251,9 +194,6 @@ export default class ZedChanges extends View {
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
           .child(Textarea.new(this.input).size_full().text_size(12).text_color(t.foreground)))
         .child(h_flex().gap(8).justify_end().items_center()
-          .child(div().id("zed-generate").h(30).px(10).flex().items_center().rounded(6).text_size(12).cursor_pointer()
-            .border(1).border_color(t.border).text_color(t.foreground).hover(s => s.bg(t.hover))
-            .on_click((_e, cx) => this.generate(cx)).child("Generate"))
           .child(div().id("zed-commit").h(30).px(10).flex().items_center().rounded(6).text_size(12)
             .bg(this.message.trim() && this.files.some(file => file.staged) ? t.solid : t.raised)
             .text_color(this.message.trim() && this.files.some(file => file.staged) ? t.solid_foreground : t.dim)
