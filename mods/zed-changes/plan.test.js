@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, LIST_MAX } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -109,4 +109,13 @@ test("unpushedArgs counts the commits of a branch that no remote has; parseCount
   assert.equal(parseCount("0\n"), 0);
   assert.equal(parseCount(""), 0);
   assert.equal(parseCount("junk"), 0);
+});
+
+test("listHeight sizes the scrolling list: headings plus rows, capped", () => {
+  const l = { remote: null }, r = { remote: "origin" };
+  assert.equal(listHeight([]), 0);
+  assert.equal(listHeight([l]), 30 + 52);
+  assert.equal(listHeight([l, r]), 30 + 52 + 30 + 52);
+  assert.equal(listHeight(Array(20).fill(l)), LIST_MAX);
+  assert.equal(listHeight([l], true), 30 + 52 + 40); // + the "Create branch" row
 });

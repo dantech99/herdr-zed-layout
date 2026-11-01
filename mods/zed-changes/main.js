@@ -4,7 +4,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -156,7 +156,7 @@ export default class ZedChanges extends View {
   async openBranches() {
     if (!this.root || this.tooMany) return;
     const branches = await listBranches(this.root, this.on);
-    openOverlay({ mod: "zed-changes", kind: "popup", width: 400, height: Math.min(520, 120 + Math.max(branches.length, 1) * 52), props: { menu: true, root: this.root, on: this.on, branches } });
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 400, height: listHeight(branches, true) + 100, props: { menu: true, root: this.root, on: this.on, branches } });
   }
 
   async runGit(args) {
@@ -251,7 +251,7 @@ export default class ZedChanges extends View {
         .child(`Create branch “${query.trim()}”`)
       : null;
     return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
-      .child(v_flex().max_h(340).overflow_y_scrollbar()
+      .child(v_flex().id("branch-list").h(Math.max(40, listHeight(shown, Boolean(create)))).overflow_y_scrollbar()
         .when(local.length > 0, el => el.child(heading("Local Branches")).children(local.map(row)))
         .when(remote.length > 0, el => el.child(heading("Remote Branches")).children(remote.map(row)))
         .when(shown.length === 0 && !create, el => el.child(div().px(10).py(10).text_size(12).text_color(t.dim).child("No matching branches")))

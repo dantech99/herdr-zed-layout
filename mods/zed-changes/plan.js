@@ -95,3 +95,13 @@ export const createArgs = name => ["switch", "-c", name.trim()];
 export const unpushedArgs = name => ["rev-list", "--count", name, "--not", "--remotes"];
 
 export const parseCount = stdout => { const n = Number.parseInt(String(stdout ?? "").trim(), 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+
+export const LIST_MAX = 340;
+
+// Height of the branch list in px: a heading per section, a row per branch, one more row to create
+// a branch; past LIST_MAX the list scrolls inside that height.
+export function listHeight(branches, creating = false) {
+  const local = branches.filter(b => !b.remote).length, remote = branches.length - local;
+  const px = (local ? 30 + local * 52 : 0) + (remote ? 30 + remote * 52 : 0) + (creating ? 40 : 0);
+  return Math.min(LIST_MAX, px);
+}
