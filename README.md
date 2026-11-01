@@ -5,7 +5,7 @@ Layout de Herdr inspirado en Zed: barra de título propia, pestañas estilo Zed,
 - `layouts/zed.json`: el layout (usa los mods de Herdr `spaces`, `agents`, `workspace-status`).
 - `mods/zed-title`, `mods/zed-tabs`, `mods/zed-new-space`, `mods/zed-panel-switch`, `mods/zed-changes`: mods propios.
 - `mods/zed-quota`: barras de cuota por agente (copia de un mod de terceros con PRs aplicados, ver Créditos). Requiere `quota-axi`.
-- `mods/zed-file`: abre un archivo del panel Files como pestaña propia, con resaltado de sintaxis y edición con Ctrl/Cmd-S (solo lectura si es remoto, truncado o binario).
+- `mods/zed-file`: abre un archivo del panel Files como pestaña propia, en solo lectura y con resaltado de sintaxis; un botón con el icono del editor lo abre en tu editor de código.
 - `mods/zed-sidebar-footer`: pie del sidebar con Settings (ajustes de Herdr), Layout settings y Add machine.
 - `mods/zed-settings`: ventana de ajustes del layout (fila «Layout settings» del pie del sidebar): word wrap global y opciones de cuota.
 - `mods/zed-file-icons`: panel Files con los iconos de Material Icon Theme (copia modificada de un mod de terceros, ver Créditos).
@@ -36,4 +36,3 @@ Verificar mods: `for m in mods/*/; do herdr-app check "$m"; done`
   - [#3](https://github.com/Lakris2407/herdr-quota/pull/3) soporte de `percentRemaining`, [#4](https://github.com/Lakris2407/herdr-quota/pull/4) alternar usado/restante, [#5](https://github.com/Lakris2407/herdr-quota/pull/5) controles del popup y [#6](https://github.com/Lakris2407/herdr-quota/pull/6) cuota en máquinas remotas: [`ruilopesm`](https://github.com/ruilopesm).
   - [#7](https://github.com/Lakris2407/herdr-quota/pull/7) soporte de shims de npm en Windows y [#8](https://github.com/Lakris2407/herdr-quota/pull/8) límites de Antigravity: [`jotafurtado`](https://github.com/jotafurtado).
   - Cambios hechos aquí: se resolvieron los conflictos entre los PRs y se renombraron el mod, el overlay y las claves de estado compartido con el prefijo `zed-quota`, y se añadió el prop `windows` (lista de ventanas por proveedor que dibuja la barra, p. ej. `{"grok": ["credits"]}`), con pruebas
-un cambio

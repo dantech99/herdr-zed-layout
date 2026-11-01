@@ -27,19 +27,6 @@ export function shortPath(path, home) {
   return home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
-// Only a complete local text file can be edited and written back: remote files have no write
-// call, and a truncated buffer would overwrite the rest of the file on save.
-export function isEditable(state, on) {
-  return state.kind === "ok" && !state.truncated && !on;
-}
-
-// What the header says: "read only", "modified", "conflict" (changed on disk while unsaved) or "".
-export function statusLabel({ editable, dirty, conflict }) {
-  if (!editable) return "read only";
-  if (conflict) return "changed on disk";
-  return dirty ? "modified" : "";
-}
-
 // Editors with a command line launcher that can open a file. Terminal editors are left out:
 // they need a terminal, not a window of their own.
 export const EDITORS = [

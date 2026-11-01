@@ -30,23 +30,6 @@ test("shortPath shows the home folder as ~", () => {
   assert.equal(shortPath("/home/me", "/home/me"), "~");
 });
 
-import { isEditable, statusLabel } from "./file.js";
-
-test("isEditable only allows complete local text files", () => {
-  assert.equal(isEditable({ kind: "ok", text: "a", truncated: false }, null), true);
-  assert.equal(isEditable({ kind: "ok", text: "a", truncated: true }, null), false);
-  assert.equal(isEditable({ kind: "binary", text: "" }, null), false);
-  assert.equal(isEditable({ kind: "missing", text: "" }, null), false);
-  assert.equal(isEditable({ kind: "ok", text: "a", truncated: false }, "box"), false);
-});
-
-test("statusLabel prioritises read only, then conflict, then modified", () => {
-  assert.equal(statusLabel({ editable: false, dirty: true, conflict: true }), "read only");
-  assert.equal(statusLabel({ editable: true, dirty: true, conflict: true }), "changed on disk");
-  assert.equal(statusLabel({ editable: true, dirty: true, conflict: false }), "modified");
-  assert.equal(statusLabel({ editable: true, dirty: false, conflict: false }), "");
-});
-
 import { EDITORS, detectScript, parseFound, launchArgs } from "./file.js";
 
 test("parseFound keeps the editors whose command was found, in list order", () => {
