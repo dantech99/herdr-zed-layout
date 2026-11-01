@@ -163,9 +163,9 @@ export default class ZedChanges extends View {
       .child(div().w(14).flex_none().text_color(t.accent).child(b.current ? "✓" : ""))
       .child(div().flex_1().min_w(0).truncate().child(b.name))
       .when(Boolean(b.remote), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(b.remote)));
-    return v_flex().id("zed-branches").size_full().p(6).bg(t.popover)
+    return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
       .child(div().px(10).pt(6).pb(4).flex_none().text_size(11.5).text_color(t.dim).child("Switch branch"))
-      .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
+      .child(v_flex().max_h(280).overflow_y_scrollbar()
         .children(branches.map(row))
         .when(branches.length === 0, el => el.child(div().px(10).py(8).text_size(12).text_color(t.dim).child("No branches"))))
       .when(Boolean(this.menuError), el => el.child(div().flex_none().px(10).py(6).text_size(11).text_color(t.ansi1).child(this.menuError)));
