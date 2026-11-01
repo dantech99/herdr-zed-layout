@@ -5,7 +5,7 @@
 
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, watchFolder, theme, settings, home } from "herdr";
+import { props, readTextFile, writeTextFile, watchFolder, shared, theme, settings, home } from "herdr";
 import { languageFor, prepare, shortPath, isEditable, statusLabel } from "./file.js";
 
 export default class ZedFile extends View {
@@ -20,7 +20,7 @@ export default class ZedFile extends View {
     this.editable = false;
     this.dirty = false;
     this.conflict = false;
-    this.wrap = false;
+    this.wrap = Boolean(shared("zed-file.options")?.wrap); // the global default; the header toggle overrides it per tab
     this.alive = true;
     if (!this.file) { this.state = { kind: "missing", text: "" }; return; }
     this.load(cx);
