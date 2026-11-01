@@ -28,3 +28,18 @@ export function diffTarget(selected, files) {
   if (selected && files.some(file => file.path === selected)) return selected;
   return files[0]?.path ?? null;
 }
+
+export const MAX_CHANGES = 5000;
+
+// What the panel calls the current branch. `symbolic` is the branch name from `symbolic-ref` (it
+// works before the first commit); `hasCommits` is false for a repository with none yet.
+export function branchLabel(symbolic, hasCommits) {
+  if (!symbolic) return "detached";
+  return hasCommits ? symbolic : `${symbolic} · no commits yet`;
+}
+
+// A folder the panel should not list: the home directory (an accidental repository there sees
+// everything under it) or more changes than anyone reviews in a side panel.
+export function tooManyChanges(root, home, count) {
+  return (Boolean(home) && root === home) || count > MAX_CHANGES;
+}

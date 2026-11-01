@@ -3,8 +3,8 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget } from "./plan.js";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home } from "herdr";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -22,6 +22,7 @@ export default class ZedChanges extends View {
     this.tab = "changes";
     this.diff = false;
     this.selected = null;
+    this.tooMany = false;
     this.lines = [];
     this.branch = "";
     this.message = "";
@@ -56,6 +57,7 @@ export default class ZedChanges extends View {
       this.files = [];
       this.history = [];
       this.selected = null;
+      this.tooMany = false;
       this.lines = [];
       this.branch = "";
       this.error = null;
@@ -72,23 +74,31 @@ export default class ZedChanges extends View {
         if (top.code !== 0) { this.root = null; this.error = "Not a git repository"; return; }
         const root = top.stdout.trim();
         const at = args => exec("git", [...READ, ...args], { cwd: root, on: here.on });
+        if (!here.on && tooManyChanges(root, home(), 0)) {
+          // Never run `status` here: it would walk the whole home directory.
+          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.lines = [];
+          this.branch = "—"; this.tooMany = true; this.error = "Your home folder is a git repository: too many changes to list";
+          return;
+        }
         const [status, branch, log] = await Promise.all([
           at(["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"]),
-          at(["rev-parse", "--abbrev-ref", "HEAD"]),
+          at(["symbolic-ref", "--short", "-q", "HEAD"]),
           at(["log", "-30", "--pretty=format:%h%x00%s"]),
         ]);
         if (key() !== context) return;
         if (status.code !== 0) throw new Error(status.stderr);
         this.root = root;
         this.on = here.on;
-        this.branch = branch.code === 0 ? branch.stdout.trim() : "";
-        this.files = parseStatus(status.stdout).slice(0, 1000);
         this.history = log.code === 0
           ? log.stdout.split("\n").filter(Boolean).map(line => { const [hash, subject] = line.split("\0"); return { hash, subject }; })
           : [];
+        this.branch = branchLabel(branch.code === 0 ? branch.stdout.trim() : "", log.code === 0);
+        const all = parseStatus(status.stdout);
+        this.tooMany = tooManyChanges(root, home(), all.length);
+        this.files = this.tooMany ? [] : all.slice(0, 1000);
         if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; this.lines = []; }
         if (this.diff) this.selected = diffTarget(this.selected, this.files);
-        this.error = null;
+        this.error = this.tooMany ? `Too many changes to list (${all.length})` : null;
         this.watch(root, cx);
         if (this.diff && this.selected) await this.loadDiff(this.selected, context);
       } catch (e) { if (key() === context) this.error = String(e.message || e); }
@@ -171,7 +181,7 @@ export default class ZedChanges extends View {
         .child(div().flex_1())
         .when(this.tab === "changes", el => el
           .child(this.chip("zed-view-diff", "View Diff", this.diff, cx => this.toggleDiff(cx), t))
-          .child(this.chip("zed-stage-all", "Stage All", false, cx => this.git(stageAllPlan(), cx), t))))
+          .when(!this.tooMany, el => el.child(this.chip("zed-stage-all", "Stage All", false, cx => this.git(stageAllPlan(), cx), t)))))
       .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
         .when(this.tab === "history", el => el.children(this.history.map(commit =>
           h_flex().h(28).flex_none().px(12).gap(8).items_center()
