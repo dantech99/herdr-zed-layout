@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, isUnmerged, canDelete } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -67,4 +67,22 @@ test("switchArgs switches by name and BRANCH_FORMAT asks for HEAD and the full r
   assert.deepEqual(switchArgs("-weird"), ["switch", "--", "-weird"]);
   assert.match(BRANCH_FORMAT, /%\(HEAD\)/);
   assert.match(BRANCH_FORMAT, /%\(refname\)/);
+});
+
+test("deleteArgs is safe by default and forces only when asked", () => {
+  assert.deepEqual(deleteArgs("wip", false), ["branch", "-d", "--", "wip"]);
+  assert.deepEqual(deleteArgs("wip", true), ["branch", "-D", "--", "wip"]);
+  assert.deepEqual(deleteArgs("-x", false), ["branch", "-d", "--", "-x"]);
+});
+
+test("isUnmerged recognises git's refusal to delete an unmerged branch", () => {
+  assert.equal(isUnmerged("error: the branch 'wip' is not fully merged\nhint: ..."), true);
+  assert.equal(isUnmerged("error: cannot delete branch 'main' used by worktree"), false);
+  assert.equal(isUnmerged(""), false);
+});
+
+test("only local branches other than the current one can be deleted", () => {
+  assert.equal(canDelete({ name: "a", current: false, remote: null }), true);
+  assert.equal(canDelete({ name: "a", current: true, remote: null }), false);
+  assert.equal(canDelete({ name: "a", current: false, remote: "origin" }), false);
 });

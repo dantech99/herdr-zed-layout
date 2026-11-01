@@ -1,10 +1,10 @@
 // Git panel: Changes stages and commits what is tracked. History is read-only.
 // View Diff shows the selected file. Commit tracked never runs git add.
 
-import { View, div } from "gpui-kit";
+import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, isUnmerged, canDelete } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -15,9 +15,15 @@ function location() {
 const key = () => JSON.stringify(location());
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 
+// The branches of a repository, ready for the picker (empty when git fails).
+async function listBranches(root, on) {
+  const r = await exec("git", [...READ, "for-each-ref", "--sort=-committerdate", `--format=${BRANCH_FORMAT}`, "refs/heads", "refs/remotes"], { cwd: root, on }).catch(() => null);
+  return r?.code === 0 ? parseBranches(r.stdout) : [];
+}
+
 export default class ZedChanges extends View {
   init(_given, cx) {
-    if (props()?.menu) { this.menu = props(); this.menuError = null; return; } // the branch popup: this same mod draws it
+    if (props()?.menu) { this.menu = props(); this.menuError = null; this.confirm = null; this.force = false; return; } // the branch popup: this same mod draws it
     this.files = [];
     this.history = [];
     this.tab = "changes";
@@ -141,9 +147,8 @@ export default class ZedChanges extends View {
   // Lists the branches and opens the picker as a popup under the branch name.
   async openBranches() {
     if (!this.root || this.tooMany) return;
-    const r = await exec("git", [...READ, "for-each-ref", "--sort=-committerdate", `--format=${BRANCH_FORMAT}`, "refs/heads", "refs/remotes"], { cwd: this.root, on: this.on }).catch(() => null);
-    const branches = r?.code === 0 ? parseBranches(r.stdout) : [];
-    openOverlay({ mod: "zed-changes", kind: "popup", width: 300, height: Math.min(380, 76 + Math.max(branches.length, 1) * 32), props: { menu: true, root: this.root, on: this.on, branches } });
+    const branches = await listBranches(this.root, this.on);
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 300, height: Math.min(420, 110 + Math.max(branches.length, 1) * 34), props: { menu: true, root: this.root, on: this.on, branches } });
   }
 
   async pickBranch(branch, cx) {
@@ -155,14 +160,43 @@ export default class ZedChanges extends View {
     cx.notify();
   }
 
+  // Delete is two steps: the trash icon asks, then "Delete" runs `git branch -d`. A branch that is not
+  // merged yet is refused by git and offered again as "Force delete" (`-D`).
+  async deleteBranch(cx) {
+    const { root, on } = this.menu, name = this.confirm;
+    if (!name) return;
+    const r = await exec("git", [...READ, ...deleteArgs(name, this.force)], { cwd: root, on }).catch(e => ({ code: 1, stderr: String(e.message || e) }));
+    if (r.code === 0) {
+      this.menu = { ...this.menu, branches: await listBranches(root, on) };
+      this.confirm = null; this.force = false; this.menuError = null;
+    } else if (isUnmerged(r.stderr)) {
+      this.force = true;
+      this.menuError = `${name} is not fully merged: its commits would be lost.`;
+    } else {
+      this.menuError = (r.stderr || "git branch failed").trim().split("\n").slice(0, 3).join(" ");
+      this.confirm = null; this.force = false;
+    }
+    cx.notify();
+  }
+
   renderMenu() {
     const t = theme(), { branches } = this.menu;
-    const row = b => h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).h(32).px(10).gap(8).items_center().rounded(8).cursor_pointer().text_size(12.5)
-      .text_color(b.current ? t.foreground : t.muted).hover(s => s.bg(t.hover)).when(b.current, el => el.bg(t.selected))
-      .on_click((_e, cx) => this.pickBranch(b, cx))
-      .child(div().w(14).flex_none().text_color(t.accent).child(b.current ? "✓" : ""))
-      .child(div().flex_1().min_w(0).truncate().child(b.name))
-      .when(Boolean(b.remote), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(b.remote)));
+    const small = (id, label, bg, color, act) => div().id(id).h(24).px(8).flex().items_center().rounded(5).flex_none().cursor_pointer().text_size(11.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => { cx.stop_propagation(); act(cx); }).child(label);
+    const row = b => this.confirm === b.name
+      ? h_flex().id(`branch-confirm-${b.name}`).h(36).px(10).gap(6).items_center().rounded(8).bg(t.selected).text_size(12.5)
+        .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(this.force ? `Force delete ${b.name}?` : `Delete ${b.name}?`))
+        .child(small("branch-delete-yes", this.force ? "Force delete" : "Delete", t.ansi1, t.background, cx => this.deleteBranch(cx)))
+        .child(small("branch-delete-no", "Cancel", t.raised, t.muted, cx => { this.confirm = null; this.force = false; this.menuError = null; cx.notify(); }))
+      : h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).h(32).px(10).gap(8).items_center().rounded(8).cursor_pointer().text_size(12.5)
+        .text_color(b.current ? t.foreground : t.muted).hover(s => s.bg(t.hover)).when(b.current, el => el.bg(t.selected))
+        .on_click((_e, cx) => this.pickBranch(b, cx))
+        .child(div().w(14).flex_none().text_color(t.accent).child(b.current ? "✓" : ""))
+        .child(div().flex_1().min_w(0).truncate().child(b.name))
+        .when(Boolean(b.remote), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(b.remote)))
+        .when(canDelete(b), el => el.child(div().id(`branch-trash-${b.name}`).size(22).flex_none().flex().items_center().justify_center().rounded(5)
+          .hover(s => s.bg(t.raised)).on_click((_e, cx) => { cx.stop_propagation(); this.confirm = b.name; this.force = false; this.menuError = null; cx.notify(); })
+          .child(svg("mods/zed-changes/icons/trash.svg").size(14).text_color(t.dim))));
     return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
       .child(div().px(10).pt(6).pb(4).flex_none().text_size(11.5).text_color(t.dim).child("Switch branch"))
       .child(v_flex().max_h(280).overflow_y_scrollbar()

@@ -65,3 +65,11 @@ export function parseBranches(text) {
 
 // A name starting with "-" must not be read as an option.
 export const switchArgs = name => name.startsWith("-") ? ["switch", "--", name] : ["switch", name];
+
+// Safe delete (`-d`, which refuses an unmerged branch) unless the user insists (`-D`).
+export const deleteArgs = (name, force) => ["branch", force ? "-D" : "-d", "--", name];
+
+export const isUnmerged = stderr => /not fully merged/i.test(String(stderr ?? ""));
+
+// Remote branches are never deleted from here, and git refuses the current one.
+export const canDelete = branch => !branch.current && !branch.remote;
