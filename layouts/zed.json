@@ -1,0 +1,90 @@
+{
+  "id": "root",
+  "type": "column",
+  "titlebar": "none",
+  "traffic_lights": [10, 8],
+  "preview": "layouts/zed.svg",
+  "theme": "tokyo-night",
+  "font": "JetBrains Mono",
+  "font_size": 14,
+  "ui_font": "Geist",
+  "background": "background",
+  "terminal_padding": [6, 8],
+  "children": [
+    {
+      "id": "titlebar",
+      "type": "block",
+      "size": { "px": 32 },
+      "window_drag": true,
+      "background": "chrome",
+      "content": { "mod": "zed-title" }
+    },
+    {
+      "id": "body",
+      "type": "row",
+      "divider": { "width": 1, "color": "border" },
+      "children": [
+        {
+          "id": "sidebar",
+          "type": "column",
+          "size": { "px": 300 },
+          "min": 44,
+          "max": 560,
+          "background": "chrome",
+          "divider": { "width": 1, "color": "border" },
+          "children": [
+            {
+              "id": "spaces",
+              "type": "block",
+              "size": { "weight": 1 },
+              "min": 90,
+              "content": { "mod": "spaces" }
+            },
+            {
+              "id": "agents",
+              "type": "block",
+              "size": { "weight": 1 },
+              "min": 90,
+              "content": { "mod": "agents" }
+            }
+          ]
+        },
+        {
+          "id": "work",
+          "type": "column",
+          "background": "background",
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "size": { "px": 34 },
+              "background": "chrome",
+              "content": { "mod": "zed-tabs" }
+            },
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "gap": 0,
+                  "radius": 0,
+                  "background": "background",
+                  "border": { "width": 1, "color": "border" },
+                  "focus": { "width": 1, "color": "accent" }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "type": "block",
+      "size": { "px": 28 },
+      "background": "chrome",
+      "content": { "mod": "workspace-status" }
+    }
+  ]
+}
