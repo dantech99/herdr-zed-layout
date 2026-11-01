@@ -113,7 +113,7 @@
       "background": "chrome",
       "children": [
         { "id": "status-main", "type": "block", "size": { "weight": 1 }, "content": { "mod": "workspace-status" } },
-        { "id": "status-quota", "type": "block", "size": { "px": 280 }, "min": 0, "background": "chrome", "content": { "mod": "zed-quota" } },
+        { "id": "status-quota", "type": "block", "size": { "px": 400 }, "min": 0, "background": "chrome", "content": { "mod": "zed-quota", "props": { "hidden": ["cursor", "copilot"], "windows": { "grok": ["credits"] } } } },
         { "id": "status-panels", "type": "block", "size": { "px": 64 }, "background": "chrome", "content": { "mod": "zed-panel-switch" } }
       ]
     }

@@ -18,7 +18,7 @@ Top to bottom, the window is a column (`titlebar: none`, so the layout draws its
      - **Tab strip, 34px**, `chrome` background. Each tab is flat with a 1px right border; the active tab uses the `background` color (`#24283b`) and `foreground` text, inactive tabs use `chrome` and `muted`. A new-tab `+` button (24px) is pinned at the right.
      - **Panes**: the active tab's terminals with no gap, no radius, a 1px `border` frame, and a 1px `accent` (`#7aa2f7`) frame on the focused pane.
    - **Right panel, 320px** (min 220, max 640, resizable), hidden until opened, `chrome` background. A stack with two views: **Files** (project tree of the focused terminal's folder, with a Material Icon Theme icon per file and folder, open-folder variants when expanded; read-only file preview; no rounded card around it) and **Changes** (git panel: stage and commit tracked files, read-only history, a diff view for the selected file, and a Generate action that starts an installed agent).
-3. **Status bar, 28px**, a row on `chrome`: the shipped `workspace-status` mod (flexible), then the **quota chips** (280px), then two **panel toggle icons** (64px, 24px buttons with 16px Lucide icons: `folder-tree` for Files, `git-compare` for Changes).
+3. **Status bar, 28px**, a row on `chrome`: the shipped `workspace-status` mod (flexible), then the **agent quota bars** (400px), then two **panel toggle icons** (64px, 24px buttons with 16px Lucide icons: `folder-tree` for Files, `git-compare` for Changes).
 
 Fonts: terminal `JetBrains Mono` 14px with `[6, 8]` terminal padding; UI font `Geist`.
 
@@ -28,7 +28,7 @@ Colors come from the custom theme `tokyo-night` (`themes/tokyo-night.json`): bac
 
 **Agent status** appears as an 8px dot at the left of each tab, using the theme's status colors: `working` `#7aa2f7`, `blocked` `#e0af68`, `done` `#9ece6a`, `idle` `#565f89`. A tab with no status gets the `dim` dot (`#414868`). The sidebar's spaces and agents lists show status in the shipped mods' own style.
 
-**Quota chips** (status bar): one rounded chip per agent that reports usage, currently only Claude. It shows the agent name, then for each window (`5h`, `7d`) a 6px dot, the rounded percent used and the time to reset (`1h 40m`, `6d 14h`, `now`). The dot is `done` green below 70 %, `blocked` yellow from 70 %, `unknown` red from 90 %. Refreshes every 60 s. With no data source the chip is simply absent.
+**Agent quota bars** (status bar): one slim bar per limit window reported by `quota-axi`: provider icon, window label (`5h`, `wk`), a thin bar and the percent used. Bars are quiet until it matters: amber from 60 %, orange from 80 %, red from 92 %. A tick marks how much of the window has passed. Clicking the strip opens a popup with reset times, pace ("ahead of / under pace"), the machine it reads from, a Refresh action and saved options (which limit kinds, which providers, signed-out providers, names, show remaining instead of used, Antigravity Claude/GPT limits). The layout hides `cursor` and `copilot` (`props.hidden`) and, for Grok, draws only its `credits` window (`props.windows: {"grok": ["credits"]}`) because Grok reports five weekly windows; the popup still lists all of them. Refreshes every 2 minutes; a result older than 10 minutes is marked stale. Windows of kind `unknown` (for example Codex's free-plan window) are not shown.
 
 **Panel toggles** (status bar): clicking Files or Changes shows the right panel on that view; clicking the active one hides the panel. The active icon is `accent` blue on a `selected` background, the inactive one `ansi7`.
 
@@ -56,7 +56,7 @@ Colors come from the custom theme `tokyo-night` (`themes/tokyo-night.json`): bac
 Own mods (all `place: "none"`):
 - `mods/zed-title` — title bar. Reads `theme()`, `window()`, `spaces()`, `agents()`, `focused()`, `layout()`; calls `run("layout.toggle")`, `run("window.minimize" | "window.maximize" | "window.close")`.
 - `mods/zed-tabs` — tab strip. Reads `spaces()`, `panes()`, `theme()`; calls `run("tab.select" | "tab.rename" | "tab.move" | "tab.close" | "tab.prev" | "tab.next")`, `openOverlay({mod: "menu"})` and `openOverlay({mod: "new-menu"})`.
-- `mods/zed-quota` — quota chips. Runs `sh -c 'cat "$HOME"/.claude/plugins/store/sub-meter_*.json'` every 60 s and parses `limits[]` (`kind`, `percentUsed`, `resetsAt`). Pure logic in `quota.js` with tests in `quota.test.js`.
+- `mods/zed-quota` — agent quota bars: a copy of `Lakris2407/herdr-quota` (MIT) with its six open pull requests applied (#3 `percentRemaining`, #4 used/remaining toggle, #5 popup controls, #6 remote machines, #7 Windows shim, #8 Antigravity toggle). Runs `quota-axi --json` on the selected space's machine, with a login-shell fallback. Modules: `main.js`, `quota-command.js`, `quota-windows.js`, `check.svg`, tests `*.test.mjs`. Shared state keys use the `zed-quota.` prefix.
 - `mods/zed-panel-switch` — the two toggle icons. Calls `layout.select {stack: "panel-body", child}`, `layout.show {id: "panel"}` and `layout.hide {id: "panel"}`. Icons in `icons/` (Lucide, ISC, see `icons/NOTICE.txt`).
 - `mods/zed-file-icons` — the Files view: a copy of `amster93/herdr-file-icons` (Apache-2.0; Material Icon Theme icons, MIT) with the root card removed. Lists folders with `sh` (`powershell` on Windows), runs `git` for change marks, watches the folder with `watchFolder`. 1184 SVGs in `icons/` indexed by `icons.js`. Credits in the README.
 - `mods/zed-changes` — the Changes view; it runs `git` (status, diff, add, commit) in the focused terminal's folder, with tests for its planning logic.
@@ -64,7 +64,7 @@ Own mods (all `place: "none"`):
 
 Shipped mods used: `spaces`, `agents`, `workspace-status`, `menu`, `new-menu`, `worktree`. Shipped assets used by path: `mods/workspace-chrome/{sidebar,branch,plus}.svg`, `mods/tabs/win-{min,max,restore,close}.svg`, `mods/pane/close.svg`.
 
-Programs run: `git` (zed-changes, zed-file-icons), `sh`/`powershell` (zed-file-icons folder listing) and one `cat` of the sub-meter file (zed-quota). No `hc`, no network. File access: the folder picker, the folders the user browses in the panel, and `~/.claude/plugins/store/sub-meter_*.json`.
+Programs run: `git` (zed-changes, zed-file-icons), `sh`/`powershell` (zed-file-icons folder listing) and `quota-axi` (zed-quota; also through the user's login shell as a fallback). `quota-axi` contacts each provider's usage endpoint with the credentials already stored on the machine. No `hc`. File access: the folder picker, the folders the user browses in the panel, and whatever `quota-axi` reads for its providers.
 
 Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the screenshot for herdr.dev.
 
@@ -78,7 +78,9 @@ Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the scre
 - The branch field always hands off to the shipped `worktree` dialog; this layout never creates a checkout itself.
 - The `−` / `□` / `❐` glyphs are used for the minimize/maximize/restore buttons on macOS and Linux; only Windows uses the shipped `win-*.svg` icons.
 - Herdr does not serve SVG/PNG assets through symlinks, refuses `import` of modules that resolve outside its folder, and caches a failed load per path. Copy mods as real files (the repo's `install.sh` does) and use a new file name if an icon silently fails to appear.
-- The quota chip depends on the `sub-meter` Claude Code plugin. Codex reports `rate_limits` as `null` on free plans, and opencode and grok expose no quota, so they get no chip.
+- The quota bars need [`quota-axi`](https://github.com/kunchenguid/quota-axi) on the machine (`npm install -g quota-axi`; check with `quota-axi --json`). Newer versions report `percentRemaining`, not `percentUsed`; derive used as `100 - remaining`, never for a `shareOf` window.
+- Too many bars overflow the 400px block and clip the left side. Keep `hidden` and `windows` in the block's `props` (or the popup's options) tight. `windows` is a local addition: a per-provider allowlist of window ids for the strip only, ignored when empty or when nothing matches. Codex's free-plan window is kind `unknown`, so it shows only its icon.
+
 - It does not define `keys.json`; the title-bar toggle has no dedicated shortcut beyond the app's own `ctrl-shift-b`.
 
 ## Done when
@@ -89,5 +91,5 @@ Art: `layouts/zed.svg` is the layout's picker preview; `preview.png` is the scre
 - The tab strip shows one flat tab per tab of the active space, with a colored status dot; double-click renames, drag reorders, right-click opens the menu, wheel switches tabs.
 - Clicking "New space" opens the dialog with the folder prefilled; Create with a folder runs `space.new`; Create with a branch opens the `worktree` dialog; an empty folder shows `Choose a folder.`.
 - Clicking Files or Changes in the status bar opens the right panel on that view and clicking the active one closes it; the icons are visible against the bar.
-- With the sub-meter plugin present, a Claude chip shows `5h` and `7d` percentages with reset times next to the panel icons.
-- `node --test` passes for `mods/zed-new-space/plan.test.js`, `mods/zed-quota/quota.test.js`, and `mods/zed-changes/plan.test.js`.
+- With `quota-axi` installed, the status bar shows a Claude `5h` and `wk` bar matching `quota-axi --json` (used = 100 - percentRemaining), and clicking it opens the popup.
+- `node --test` passes for `mods/zed-new-space/plan.test.js`, `node --test mods/zed-quota/*.test.mjs`, and `mods/zed-changes/plan.test.js`.
