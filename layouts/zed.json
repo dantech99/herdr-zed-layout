@@ -34,6 +34,13 @@
           "divider": { "width": 1, "color": "border" },
           "children": [
             {
+              "id": "new-space",
+              "type": "block",
+              "size": { "px": 48 },
+              "background": "chrome",
+              "content": { "mod": "zed-new-space" }
+            },
+            {
               "id": "spaces",
               "type": "block",
               "size": { "weight": 1 },
