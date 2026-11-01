@@ -74,3 +74,9 @@ export function parseFound(stdout) {
 // `sh` arguments that start `cmd` on `file` in the background, so exec returns at once. The path
 // is an argument, never part of the script, so quotes and spaces in it are safe.
 export const launchArgs = (cmd, file) => ["-c", 'nohup "$0" "$@" >/dev/null 2>&1 &', cmd, file];
+
+// Material Icon Theme has icons for a few editors: `cursor.svg` is the light grey one for dark themes.
+export function editorIcon(cmd, dark) {
+  const name = cmd.startsWith("code") ? "vscode" : cmd === "cursor" ? (dark ? "cursor" : "cursor_light") : cmd === "subl" ? "sublime" : null;
+  return name && `mods/zed-file/icons/${name}.svg`;
+}

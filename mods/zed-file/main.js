@@ -6,7 +6,7 @@
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { props, run, exec, openOverlay, window, setShared, readTextFile, writeTextFile, watchFolder, shared, theme, settings, home } from "herdr";
-import { languageFor, prepare, shortPath, isEditable, statusLabel, detectScript, parseFound, launchArgs } from "./file.js";
+import { languageFor, prepare, shortPath, isEditable, statusLabel, detectScript, parseFound, launchArgs, editorIcon } from "./file.js";
 
 export default class ZedFile extends View {
   init(_given, cx) {
@@ -50,19 +50,25 @@ export default class ZedFile extends View {
 
   openMenu() {
     const editors = shared("zed-file.editors") ?? [];
-    openOverlay({ mod: "zed-file", kind: "popup", width: 220, height: 12 + (editors.length + 1) * 30, props: { menu: true, file: this.file, editors } });
+    openOverlay({ mod: "zed-file", kind: "popup", width: 240, height: 12 + 30 + editors.length * 34, props: { menu: true, file: this.file, editors } });
   }
 
-  // The popup: one row per installed editor, then the system's default app.
+  // The popup, styled like Herdr's own menus: a dim heading, then one row per installed editor
+  // with its icon (a letter tile when Material Icon Theme has none).
   renderMenu() {
-    const t = theme(), { file, editors } = this.menu;
-    const item = (id, label, cmd) => div().id(id).h(30).px(10).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
-      .text_color(t.foreground).hover(s => s.bg(t.hover))
-      .on_click(() => { exec("sh", launchArgs(cmd, file)).catch(() => {}); run("overlay.close"); })
-      .child(label);
-    return v_flex().id("zed-open-in").w_full().p(6).gap(0).bg(t.popover)
-      .children(editors.map(e => item(`open-${e.cmd}`, e.label, e.cmd)))
-      .child(item("open-default", "Default app", window()?.platform === "macos" ? "open" : "xdg-open"));
+    const t = theme(), { file, editors } = this.menu, dark = Boolean(settings().dark);
+    const row = e => {
+      const icon = editorIcon(e.cmd, dark);
+      return h_flex().id(`open-${e.cmd}`).h(34).px(10).gap(10).items_center().rounded(8).cursor_pointer().text_size(13)
+        .text_color(t.foreground).hover(s => s.bg(t.hover))
+        .on_click(() => { exec("sh", launchArgs(e.cmd, file)).catch(() => {}); run("overlay.close"); })
+        .child(icon ? image(icon).size(16).flex_none()
+          : div().size(16).flex_none().flex().items_center().justify_center().rounded(4).bg(t.selected).text_size(10).font_semibold().text_color(t.muted).child(e.label[0]))
+        .child(div().flex_1().min_w(0).truncate().child(e.label));
+    };
+    return v_flex().id("zed-open-in").w_full().p(6).bg(t.popover)
+      .child(div().px(10).pt(6).pb(4).text_size(11.5).text_color(t.dim).child("Open in"))
+      .children(editors.map(row));
   }
 
   async load(cx) {

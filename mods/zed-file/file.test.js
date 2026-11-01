@@ -66,3 +66,13 @@ test("launchArgs detaches the editor and passes the path untouched", () => {
   assert.deepEqual(args.slice(2), ["code", "/a b/it's.js"]);
   assert.match(args[1], /nohup "\$0" "\$@"/);
 });
+
+import { editorIcon } from "./file.js";
+
+test("editorIcon picks the Material icon by theme, or null", () => {
+  assert.equal(editorIcon("code", true), "mods/zed-file/icons/vscode.svg");
+  assert.equal(editorIcon("code-insiders", false), "mods/zed-file/icons/vscode.svg");
+  assert.equal(editorIcon("cursor", true), "mods/zed-file/icons/cursor.svg");
+  assert.equal(editorIcon("cursor", false), "mods/zed-file/icons/cursor_light.svg");
+  assert.equal(editorIcon("zed", true), null);
+});
