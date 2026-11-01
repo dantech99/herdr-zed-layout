@@ -3,6 +3,7 @@
 //
 // Modified from Herdr's shipped `files` mod (https://github.com/herdrdev/herdr-app, Apache-2.0):
 // added DIR, icon() and the Material Icon Theme icons in the rows and the preview header.
+// herdr-zed-layout: clicking a file opens it as a tab (openTab) instead of the in-panel preview.
 //
 // Original: https://github.com/amster93/herdr-file-icons (Apache-2.0, see LICENSE).
 // Changed for herdr-zed-layout: the root no longer draws its own rounded, bordered card.
@@ -10,17 +11,23 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window } from "herdr";
 import ICONS from "./icons.js";
+import { openFile } from "./open-tab.js";
 
+let lastTerminal = null; // herdr-zed-layout: where the last focused terminal was
 function location() {
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  const where = { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  // A file tab (a mod pane) has no folder of its own: keep showing the tree you opened it from.
+  if (pane?.mod && lastTerminal) return lastTerminal;
+  if (!pane?.mod) lastTerminal = where;
+  return where;
 }
 const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
-const DIR = "mods/file-icons";
+const DIR = "mods/zed-file-icons";
 
 // Material Icon Theme's rules, as VS Code applies them: names match case-insensitively; a
 // path rule (".github/workflows") beats a name, a name beats an extension, and the longest
@@ -153,13 +160,18 @@ export default class Files extends View {
     });
   }
 
+  // Zed-style: a file opens as a tab of its own (see zed-file), not in this panel.
+  openTab(path, cx) {
+    openFile({ file: `${this.root}/${path}`, icon: icon(path, false, false, Boolean(settings().dark)), on: this.on }, cx);
+  }
+
   rows(prefix, depth, out, t, dark) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
       if (out.length >= TOTAL) break;
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.show(path, cx))
+        .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.openTab(path, cx))
         .child(entry.dir ? svg(`${DIR}/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(icon(path, entry.dir, open, dark)).size(16).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
