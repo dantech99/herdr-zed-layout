@@ -181,11 +181,13 @@ export default class ZedChanges extends View {
     if (r.code === 0) run("overlay.close"); else this.fail(r, cx);
   }
 
+  // Handlers below take the `cx` of a `cx.spawn` task: an event handler's own `cx` is only valid until
+  // the handler returns, so `cx.notify()` after an `await` on it never redraws.
   // Enter in the search box: create the typed name if it is new, else switch to the first match.
   submitSearch(cx) {
     const query = this.search.value(), branches = this.menu.branches;
-    if (canCreate(branches, query)) this.createBranch(query.trim(), cx);
-    else { const first = filterBranches(branches, query)[0]; if (first) this.pickBranch(first, cx); }
+    if (canCreate(branches, query)) cx.spawn(async cx => this.createBranch(query.trim(), cx));
+    else { const first = filterBranches(branches, query)[0]; if (first) cx.spawn(async cx => this.pickBranch(first, cx)); }
   }
 
   // The trash icon deletes at once. Only a branch with commits no remote has asks first, in a modal.
@@ -223,7 +225,7 @@ export default class ZedChanges extends View {
       .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
       .child(h_flex().gap(8).justify_end().pt(4)
         .child(button("delete-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: this.dialog.overlay })))
-        .child(button("delete-accept", "Accept", t.ansi1, t.background, cx => this.acceptDelete(cx))));
+        .child(button("delete-accept", "Accept", t.ansi1, t.background, cx => cx.spawn(async cx => this.acceptDelete(cx)))));
   }
 
   // The branch popup, laid out like Zed's: sections, two-line rows (name, then author · age · subject),
@@ -233,7 +235,7 @@ export default class ZedChanges extends View {
     const shown = filterBranches(all, query), local = shown.filter(b => !b.remote), remote = shown.filter(b => b.remote);
     const heading = text => div().px(10).pt(10).pb(4).text_size(11.5).text_color(t.dim).child(text);
     const row = b => h_flex().id(`branch-${b.remote ?? "local"}-${b.name}`).px(10).py(7).gap(10).items_center().rounded(8).cursor_pointer()
-      .hover(s => s.bg(t.selected)).on_click((_e, cx) => this.pickBranch(b, cx))
+      .hover(s => s.bg(t.selected)).on_click((_e, cx) => cx.spawn(async cx => this.pickBranch(b, cx)))
       .child(div().size(16).flex_none().flex().items_center().justify_center()
         .child(svg(b.current ? "mods/zed-changes/icons/check.svg" : b.remote ? "mods/zed-changes/icons/cloud.svg" : "mods/zed-changes/icons/git-branch.svg").size(15)
           .text_color(b.current ? t.accent : t.dim)))
@@ -243,11 +245,11 @@ export default class ZedChanges extends View {
       .when(canDelete(b), el => el.child(div().id(`branch-trash-${b.name}`).size(26).flex_none().flex().items_center().justify_center().rounded(6)
         .hover(s => s.bg(t.raised)).tooltip(`Delete ${b.name}`)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); this.requestDelete(b, cx); })
+        .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async cx => this.requestDelete(b, cx)); })
         .child(svg("mods/zed-changes/icons/trash.svg").size(14).text_color(t.dim))));
     const create = canCreate(all, query)
       ? h_flex().id("branch-create").px(10).py(9).gap(10).items_center().rounded(8).cursor_pointer().text_size(13).text_color(t.accent)
-        .hover(s => s.bg(t.selected)).on_click((_e, cx) => this.createBranch(query.trim(), cx))
+        .hover(s => s.bg(t.selected)).on_click((_e, cx) => cx.spawn(async cx => this.createBranch(query.trim(), cx)))
         .child(`Create branch “${query.trim()}”`)
       : null;
     return v_flex().id("zed-branches").w_full().p(6).bg(t.popover)
