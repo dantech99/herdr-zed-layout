@@ -5,12 +5,13 @@
 
 import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, watchFolder, shared, theme, settings, home } from "herdr";
-import { languageFor, prepare, shortPath, isEditable, statusLabel } from "./file.js";
+import { props, run, exec, openOverlay, window, setShared, readTextFile, writeTextFile, watchFolder, shared, theme, settings, home } from "herdr";
+import { languageFor, prepare, shortPath, isEditable, statusLabel, detectScript, parseFound, launchArgs } from "./file.js";
 
 export default class ZedFile extends View {
   init(_given, cx) {
     const p = props() ?? {};
+    if (p.menu) { this.menu = p; return; } // the "Open in" popup: this same mod draws it
     this.file = p.file ?? null;
     this.on = p.on ?? null;
     this.icon = p.icon ?? null; // worked out by the Files panel: mods cannot import each other
@@ -22,6 +23,7 @@ export default class ZedFile extends View {
     this.conflict = false;
     this.wrap = Boolean(shared("zed-file.options")?.wrap); // the global default; the header toggle overrides it per tab
     this.alive = true;
+    this.detect(cx);
     if (!this.file) { this.state = { kind: "missing", text: "" }; return; }
     this.load(cx);
     cx.spawn(async cx => {
@@ -33,6 +35,34 @@ export default class ZedFile extends View {
         }
       } catch { /* no watcher: the file stays as read */ }
     });
+  }
+
+  // Looks for installed editors once per session; the result is shared by every file tab.
+  async detect(cx) {
+    if (shared("zed-file.editors") || window()?.platform === "windows") return;
+    setShared("zed-file.editors", []); // claim it, so tabs opened meanwhile do not repeat the search
+    try {
+      const r = await exec("sh", ["-c", detectScript()]);
+      setShared("zed-file.editors", parseFound(r.stdout));
+    } catch { /* no sh: the button stays hidden */ }
+    cx.notify();
+  }
+
+  openMenu() {
+    const editors = shared("zed-file.editors") ?? [];
+    openOverlay({ mod: "zed-file", kind: "popup", width: 220, height: 12 + (editors.length + 1) * 30, props: { menu: true, file: this.file, editors } });
+  }
+
+  // The popup: one row per installed editor, then the system's default app.
+  renderMenu() {
+    const t = theme(), { file, editors } = this.menu;
+    const item = (id, label, cmd) => div().id(id).h(30).px(10).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .text_color(t.foreground).hover(s => s.bg(t.hover))
+      .on_click(() => { exec("sh", launchArgs(cmd, file)).catch(() => {}); run("overlay.close"); })
+      .child(label);
+    return v_flex().id("zed-open-in").w_full().p(6).gap(0).bg(t.popover)
+      .children(editors.map(e => item(`open-${e.cmd}`, e.label, e.cmd)))
+      .child(item("open-default", "Default app", window()?.platform === "macos" ? "open" : "xdg-open"));
   }
 
   async load(cx) {
@@ -104,6 +134,7 @@ export default class ZedFile extends View {
   }
 
   render() {
+    if (this.menu) return this.renderMenu();
     const t = theme(), s = this.state;
     const body = s.kind === "ok" && this.code ? Editor.new(this.code).flex_1().min_h(0)
       : s.kind === "binary" ? this.message("Binary file · no text view", t)
@@ -117,6 +148,8 @@ export default class ZedFile extends View {
         .child(this.icon ? image(this.icon).size(14).flex_none() : div())
         .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(this.file ? shortPath(this.file, home()) : ""))
         .when(s.truncated, el => el.child(div().text_color(t.blocked).child("truncated")))
+        .when(this.state.kind === "ok" && !this.on && this.file && (shared("zed-file.editors") ?? []).length > 0, el => el.child(div().id("open-in").cursor_pointer().text_color(t.dim)
+          .on_click(() => this.openMenu()).child("open in…")))
         .when(this.state.kind === "ok", el => el.child(div().id("wrap").cursor_pointer().text_color(this.wrap ? t.foreground : t.dim)
           .on_click((_e, cx) => this.toggleWrap(cx)).child("wrap")))
         .child(div().text_color(this.conflict ? t.blocked : t.dim).child(label)))

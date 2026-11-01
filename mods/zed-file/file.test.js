@@ -46,3 +46,23 @@ test("statusLabel prioritises read only, then conflict, then modified", () => {
   assert.equal(statusLabel({ editable: true, dirty: true, conflict: false }), "modified");
   assert.equal(statusLabel({ editable: true, dirty: false, conflict: false }), "");
 });
+
+import { EDITORS, detectScript, parseFound, launchArgs } from "./file.js";
+
+test("parseFound keeps the editors whose command was found, in list order", () => {
+  const found = parseFound("/usr/bin/zed\n/usr/bin/code\nnot-a-path\n");
+  assert.deepEqual(found.map(e => e.cmd), ["code", "zed"]);
+  assert.equal(found[0].label, "VS Code");
+  assert.deepEqual(parseFound(""), []);
+});
+
+test("detectScript checks every known editor command once", () => {
+  for (const e of EDITORS) assert.ok(detectScript().includes(e.cmd), e.cmd);
+});
+
+test("launchArgs detaches the editor and passes the path untouched", () => {
+  const args = launchArgs("code", "/a b/it's.js");
+  assert.equal(args[0], "-c");
+  assert.deepEqual(args.slice(2), ["code", "/a b/it's.js"]);
+  assert.match(args[1], /nohup "\$0" "\$@"/);
+});
