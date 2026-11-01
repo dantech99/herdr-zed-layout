@@ -94,12 +94,15 @@ export default class ZedTabs extends View {
     return h_flex().size_full().min_w(0).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
-      .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scrollbar().children(shown.map(item)))
-      .child(div().id("zed-tab-new").size(24).mr(6).flex_none().flex().items_center().justify_center().rounded(4)
-        .text_color(t.muted)
-        .hover(s => s.bg(t.hover).text_color(t.foreground))
-        .on_mouse_down("left", stop)
-        .on_click(() => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 }))
-        .child(svg("mods/workspace-chrome/plus.svg").size(14)));
+      // The + is the last item of the tab row, so it sits right after the last tab. With more
+      // tabs than fit, it scrolls with them instead of staying pinned at the edge.
+      .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scrollbar()
+        .children(shown.map(item))
+        .child(div().id("zed-tab-new").size(24).mx(6).flex_none().flex().items_center().justify_center().rounded(4)
+          .text_color(t.muted)
+          .hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_mouse_down("left", stop)
+          .on_click(() => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 }))
+          .child(svg("mods/workspace-chrome/plus.svg").size(14))));
   }
 }

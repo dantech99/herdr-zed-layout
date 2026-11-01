@@ -15,7 +15,7 @@ Top to bottom, the window is a column (`titlebar: none`, so the layout draws its
      - **Spaces:** the shipped `spaces` mod, weight 1, min 90px.
      - **Agents:** the shipped `agents` mod, weight 1, min 90px.
    - **Work area**, a column:
-     - **Tab strip, 34px**, `chrome` background. Each tab is flat with a 1px right border; the active tab uses the `background` color (`#24283b`) and `foreground` text, inactive tabs use `chrome` and `muted`. A new-tab `+` button (24px) is pinned at the right.
+     - **Tab strip, 34px**, `chrome` background. Each tab is flat with a 1px right border; the active tab uses the `background` color (`#24283b`) and `foreground` text, inactive tabs use `chrome` and `muted`. A new-tab `+` button (24px, 6px margin each side) sits right after the last tab and scrolls with the tabs when there are more than fit.
      - **Panes**: the active tab's terminals with no gap, no radius, a 1px `border` frame, and a 1px `accent` (`#7aa2f7`) frame on the focused pane.
    - **Right panel, 320px** (min 220, max 640, resizable), hidden until opened, `chrome` background. A stack with two views: **Files** (project tree of the focused terminal's folder, with a Material Icon Theme icon per file and folder, open-folder variants when expanded; read-only file preview; no rounded card around it) and **Changes** (git panel: stage and commit tracked files, read-only history, a diff view for the selected file, and a Generate action that starts an installed agent).
 3. **Status bar, 28px**, a row on `chrome`: the shipped `workspace-status` mod (flexible), then the **agent quota bars** (400px), then two **panel toggle icons** (64px, 24px buttons with 16px Lucide icons: `folder-tree` for Files, `git-compare` for Changes).
