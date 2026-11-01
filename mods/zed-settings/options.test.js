@@ -18,11 +18,11 @@ test("toggleHidden adds and removes without mutating", () => {
 });
 
 test("fileOptions defaults wrap off", () => {
-  assert.deepEqual(fileOptions(null), { wrap: false });
-  assert.deepEqual(fileOptions({ wrap: true }), { wrap: true });
+  assert.deepEqual(fileOptions(null), { wrap: false, editor: "Zed" });
+  assert.deepEqual(fileOptions({ wrap: true }), { wrap: true, editor: "Zed" });
 });
 
-import { CATEGORIES, staticItems, providerItems, matches, visible } from "./options.js";
+import { CATEGORIES, staticItems, providerItems, matches, visible, editorItem } from "./options.js";
 
 test("every static item has a category, label and description", () => {
   const ids = CATEGORIES.map(c => c.id);
@@ -65,4 +65,14 @@ test("matches and visible filter by label and description, across categories", (
   const hit = visible(items, "editor", "weekly");
   assert.ok(hit.length > 0 && hit.every(i => /weekly/i.test(i.label + i.description)));
   assert.equal(visible(items, "editor", "zzz").length, 0);
+});
+
+test("editorItem is a choice among the installed editors, Zed by default", () => {
+  assert.equal(editorItem([]), null);
+  const item = editorItem([{ cmd: "code", label: "VS Code" }, { cmd: "zed", label: "Zed" }]);
+  assert.equal(item.kind, "choice");
+  assert.equal(item.category, "editor");
+  assert.deepEqual(item.options, ["VS Code", "Zed"]);
+  assert.equal(item.get(fileOptions(null)), "Zed");
+  assert.deepEqual(item.patch(fileOptions(null), "VS Code"), { editor: "VS Code" });
 });
