@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDiff, addedRows, countRows, tokenize } from "./diff.js";
+import { parseDiff, addedRows, countRows, tokenize, pieces } from "./diff.js";
 
 const SAMPLE = ["diff --git a/a.js b/a.js", "index 1..2 100644", "--- a/a.js", "+++ b/a.js",
   "@@ -2,3 +2,4 @@ fn", " keep", "-old", "+new", "+extra", " tail", "\\ No newline at end of file", ""].join("\n");
@@ -31,4 +31,11 @@ test("tokenize colors keywords, strings, numbers, calls, types and comments", ()
   assert.deepEqual(kinds('sign("a", 3600)'), ["function:sign", 'string:"a"', "number:3600"]);
   assert.deepEqual(tokenize("x # y", "py").map(t => t.kind), [null, "comment"]);
   assert.equal(tokenize("a  b", "js").map(t => t.text).join(""), "a  b");
+});
+
+test("pieces splits tokens at spaces and keeps every character", () => {
+  const out = pieces(tokenize("  const a = 1;", "js"));
+  assert.equal(out.map(p => p.text).join(""), "  const a = 1;");
+  assert.deepEqual(out.filter(p => p.kind).map(p => p.text), ["const", "1"]);
+  assert.ok(out.every(p => p.text === p.text.trim() || p.text.trim() === ""));
 });

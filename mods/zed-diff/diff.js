@@ -72,3 +72,8 @@ export function tokenize(line, ext) {
   }
   return out;
 }
+
+// Tokens cut into words and runs of spaces, so a wrapping row can break between them.
+export function pieces(tokens) {
+  return tokens.flatMap(tok => (tok.text.match(/\s+|\S+/g) ?? []).map(text => ({ text, kind: tok.kind })));
+}

@@ -4,8 +4,8 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, exec, readTextFile, watchFolder, theme, settings } from "herdr";
-import { parseDiff, addedRows, countRows, tokenize, MAX_ROWS } from "./diff.js";
+import { props, exec, readTextFile, watchFolder, theme, settings, shared } from "herdr";
+import { parseDiff, addedRows, countRows, tokenize, pieces, MAX_ROWS } from "./diff.js";
 
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
 const GUTTER = 44;
@@ -20,6 +20,7 @@ export default class ZedDiff extends View {
     this.ext = this.path?.includes(".") ? this.path.split(".").pop().toLowerCase() : "";
     this.rows = null; // null while loading
     this.note = null;
+    this.wrap = Boolean(shared("zed-file.options")?.wrap); // the global default; the header toggle overrides it per tab
     this.alive = true;
     if (!this.root || !this.path) { this.rows = []; this.note = "This diff is not available"; return; }
     this.load(cx);
@@ -49,6 +50,8 @@ export default class ZedDiff extends View {
     cx.notify();
   }
 
+  toggleWrap(cx) { this.wrap = !this.wrap; cx.notify(); }
+
   async close() { this.alive = false; }
 
   line(row, i, t) {
@@ -58,23 +61,31 @@ export default class ZedDiff extends View {
     if (row.kind === "hunk") {
       return h_flex().id(`d${i}`).h(22).flex_none().px(12).items_center().bg(t.chrome).text_color(t.dim).child(div().whitespace_nowrap().child(row.text));
     }
-    const row_ = h_flex().id(`d${i}`).h(22).flex_none().items_center().min_w(0)
+    const wrap = this.wrap;
+    const code = tokenize(row.text, this.ext);
+    const part = tok => div().whitespace_nowrap().text_color(tok.kind ? color[tok.kind] : t.foreground).child(tok.text);
+    return h_flex().id(`d${i}`).flex_none().min_w(0)
+      .when(wrap, el => el.min_h(22).items_start().py(1)).when(!wrap, el => el.h(22).items_center())
       .when(add || del, el => el.bg(`${tint}22`).border_l(2).border_color(tint))
       .child(div().w(GUTTER).flex_none().pr(8).text_right().text_color(t.dim).child(String(row.old ?? "")))
       .child(div().w(GUTTER).flex_none().pr(8).text_right().text_color(add ? t.ansi2 : t.dim).child(String(row.new ?? "")))
-      .child(div().w(16).flex_none().text_color(add ? t.ansi2 : t.ansi1).child(add ? "+" : del ? "-" : ""));
-    return row_.child(h_flex().flex_1().min_w(0).whitespace_nowrap()
-      .children(tokenize(row.text, this.ext).map(tok => div().text_color(tok.kind ? color[tok.kind] : t.foreground).child(tok.text))));
+      .child(div().w(16).flex_none().text_color(add ? t.ansi2 : t.ansi1).child(add ? "+" : del ? "-" : ""))
+      .child(wrap
+        ? h_flex().flex_1().min_w(0).flex_wrap().children(pieces(code).map(part))
+        : h_flex().flex_1().min_w(0).whitespace_nowrap().children(code.map(part)));
   }
 
   render() {
     const t = theme();
     const rows = this.rows ?? [], { added, removed } = countRows(rows);
-    return v_flex().id("zed-diff-tab").size_full().min_h(0).bg(t.background).text_color(t.foreground)
+    return v_flex().id("zed-diff-tab").key_context("ZedDiff").size_full().min_h(0).bg(t.background).text_color(t.foreground)
+      .on_key_down((e, cx) => { if (e.keystroke === "alt-z") { cx.stop_propagation(); this.toggleWrap(cx); } })
       .child(h_flex().h(28).px(12).gap(8).flex_none().items_center().border_b(1).border_color(t.border).text_size(12)
         .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(this.path ?? ""))
         .when(rows.length > 0, el => el.child(div().text_color(t.ansi2).child(`+${added}`)).child(div().text_color(t.ansi1).child(`-${removed}`)))
         .when(rows.length >= MAX_ROWS, el => el.child(div().text_color(t.blocked).child("truncated")))
+        .when(rows.length > 0, el => el.child(div().id("wrap").cursor_pointer().text_color(this.wrap ? t.foreground : t.dim)
+          .on_click((_e, cx) => this.toggleWrap(cx)).child("wrap")))
         .child(div().text_color(t.dim).child("read only")))
       .child(this.rows === null || this.note
         ? div().flex_1().flex().items_center().justify_center().text_color(t.dim).child(this.note ?? "Loading…")
