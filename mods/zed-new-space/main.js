@@ -2,7 +2,7 @@
 // Folder, agent, and an optional branch. A branch hands off to the
 // shipped worktree dialog, which creates the checkout and the space.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, spaces, panes, home, knownAgents, pickFolder, layout } from "herdr";
 import { planNewSpace, startingFolder } from "./plan.js";
@@ -76,13 +76,18 @@ export default class ZedNewSpace extends View {
 
   button() {
     const t = theme();
-    return h_flex().id("zed-new-space-bar").size_full().px(8).items_center().bg(t.chrome)
-      .child(h_flex().id("zed-new-space-open").flex_1().h(32).gap(7).items_center().justify_center().rounded(8)
-        .bg(t.solid).text_color(t.solid_foreground).font_medium().cursor_pointer()
-        .hover(s => s.bg(t.foreground))
-        .on_click(() => openOverlay({ mod: "zed-new-space", kind: "dialog", width: 460, height: 340 }))
-        .child(svg("mods/workspace-chrome/plus.svg").size(14).text_color(t.solid_foreground))
-        .when(!narrow(), el => el.child("New space")));
+    const collapsed = narrow();
+    return v_flex().id("zed-new-space-bar").size_full().bg(t.chrome)
+      .child(h_flex().id("zed-new-space-brand").h(40).px(8).gap(9).items_center().justify_center()
+        .child(image("frame/welcome/herdr.png").size(22).flex_none().rounded(6))
+        .when(!collapsed, el => el.child(div().font_semibold().text_size(14).text_color(t.foreground).child("Herdr"))))
+      .child(h_flex().px(8).h(48).items_center()
+        .child(h_flex().id("zed-new-space-open").flex_1().h(32).gap(7).items_center().justify_center().rounded(8)
+          .bg(t.solid).text_color(t.solid_foreground).font_medium().cursor_pointer()
+          .hover(s => s.bg(t.foreground))
+          .on_click(() => openOverlay({ mod: "zed-new-space", kind: "dialog", width: 460, height: 340 }))
+          .child(svg("mods/workspace-chrome/plus.svg").size(14).text_color(t.solid_foreground))
+          .when(!collapsed, el => el.child("New space"))));
   }
 
   render() {
