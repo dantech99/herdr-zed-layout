@@ -1,5 +1,7 @@
 # herdr-zed-layout
 
+![herdr-zed-layout: un layout de Herdr inspirado en Zed](docs/cover.png)
+
 Layout para [Herdr](https://github.com/herdrdev/herdr-app) inspirado en Zed. Reúne una barra de título, navegación por pestañas, paneles Files y Changes, barra de estado, configuración del layout y cuotas de agentes.
 
 ## Qué incluye
