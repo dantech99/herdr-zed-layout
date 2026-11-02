@@ -70,10 +70,13 @@
           "children": [
             {
               "id": "tabs",
-              "type": "block",
+              "type": "row",
               "size": { "px": 34 },
               "background": "chrome",
-              "content": { "mod": "zed-tabs" }
+              "children": [
+                { "id": "tabs-strip", "type": "block", "size": { "weight": 1 }, "background": "chrome", "content": { "mod": "zed-tabs" } },
+                { "id": "tabs-commands", "type": "block", "size": { "px": 190 }, "min": 0, "background": "chrome", "content": { "mod": "zed-commands" } }
+              ]
             },
             {
               "id": "main",
