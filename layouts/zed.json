@@ -36,7 +36,7 @@
             {
               "id": "new-space",
               "type": "block",
-              "size": { "px": 48 },
+              "size": { "px": 88 },
               "background": "chrome",
               "content": { "mod": "zed-new-space" }
             },

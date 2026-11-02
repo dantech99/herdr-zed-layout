@@ -11,7 +11,7 @@ Top to bottom, the window is a column (`titlebar: none`, so the layout draws its
 1. **Title bar, 32px**, background `chrome` (`#1f2335`), 1px `border` line below, 12px text, draggable. Left: a sidebar toggle button (22px square, `mods/workspace-chrome/sidebar.svg`). Next to it, breadcrumbs separated by a dim `·`: the active space name (`foreground`), its git branch with a branch icon (`muted`), and the focused agent's program name, or the tab name if the tab was renamed (`muted`). Each crumb truncates at 240px. With no space it shows `Zed` in `muted`. On Windows/Linux, when the window reports buttons, minimize, maximize/restore and close sit on the right; close turns `blocked`-yellow on hover. On macOS the left padding grows to leave room for the traffic lights (`traffic_lights: [10, 8]`).
 2. **Body**, a row with 1px `border` dividers:
    - **Sidebar, 300px** (min 44, max 560, resizable), background `chrome`, three stacked blocks:
-     - **New space, 48px:** a full-width pill button (`solid` blue `#7aa2f7`, dark text, 8px radius) with a plus icon and the label "New space". The label hides when the sidebar is narrower than 160px.
+     - **New space, 88px:** a 40px brand row (the Herdr logo `frame/welcome/herdr.png` at 22px with "Herdr" in semibold 14px, centered; the label hides below 160px) above a 48px row with a full-width pill button (`solid` blue `#7aa2f7`, dark text, 8px radius) with a plus icon and the label "New space". The label hides when the sidebar is narrower than 160px.
      - **Spaces:** the shipped `spaces` mod, weight 1, min 90px.
      - **Agents:** the shipped `agents` mod, weight 1, min 90px.
    - **Work area**, a column:
@@ -53,7 +53,7 @@ Colors come from the custom theme `tokyo-night` (`themes/tokyo-night.json`): bac
 
 ## Built from
 
-`layouts/zed.json` node tree: `root` (column) → `titlebar` (block, 32px, `window_drag`), `body` (row) → [`sidebar` (column, 300px) → `new-space` (48px), `spaces`, `agents`], [`work` (column) → `tabs` (34px), `main` (block with `tab: "active"` and the `pane` style above)], [`panel` (column, 320px, `hidden: true`) → `panel-body` (stack, `active: "files"`) → `files` (zed-file-icons), `changes` (zed-changes)], then `status` (row, 28px) → `status-main` (weight 1), `status-quota` (280px), `status-panels` (64px). Layout keys: `theme: "tokyo-night"`, `font`, `font_size`, `ui_font`, `background: "background"`, `terminal_padding`, `preview: "layouts/zed.svg"`.
+`layouts/zed.json` node tree: `root` (column) → `titlebar` (block, 32px, `window_drag`), `body` (row) → [`sidebar` (column, 300px) → `new-space` (88px), `spaces`, `agents`], [`work` (column) → `tabs` (34px), `main` (block with `tab: "active"` and the `pane` style above)], [`panel` (column, 320px, `hidden: true`) → `panel-body` (stack, `active: "files"`) → `files` (zed-file-icons), `changes` (zed-changes)], then `status` (row, 28px) → `status-main` (weight 1), `status-quota` (280px), `status-panels` (64px). Layout keys: `theme: "tokyo-night"`, `font`, `font_size`, `ui_font`, `background: "background"`, `terminal_padding`, `preview: "layouts/zed.svg"`.
 
 Own mods (all `place: "none"`):
 - `mods/zed-title` — title bar. Reads `theme()`, `window()`, `spaces()`, `agents()`, `focused()`, `layout()`; calls `run("layout.toggle")`, `run("window.minimize" | "window.maximize" | "window.close")`.
