@@ -23,12 +23,6 @@ export function commitPlan(message, files) {
   return { args: ["commit", "-m", text] };
 }
 
-// The file whose diff View Diff shows: the selected one if it still has changes, else the first.
-export function diffTarget(selected, files) {
-  if (selected && files.some(file => file.path === selected)) return selected;
-  return files[0]?.path ?? null;
-}
-
 export const MAX_CHANGES = 5000;
 
 // What the panel calls the current branch. `symbolic` is the branch name from `symbolic-ref` (it
