@@ -1,10 +1,11 @@
 // Git panel: Changes stages and commits what is tracked. History is read-only.
-// View Diff shows the selected file. Commit tracked never runs git add.
+// Clicking a changed file opens its diff as a tab (zed-diff). Commit tracked never runs git add.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, diffTarget, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU } from "./plan.js";
+import { spaces, panes, focused, exec, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
+import { openDiff } from "./open-diff.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU } from "./plan.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -38,7 +39,6 @@ export default class ZedChanges extends View {
     this.files = [];
     this.history = [];
     this.tab = "changes";
-    this.diff = false;
     this.selected = null;
     this.tooMany = false;
     this.remotes = [];
@@ -46,7 +46,6 @@ export default class ZedChanges extends View {
     this.ahead = 0;
     this.behind = 0;
     this.syncing = null;
-    this.lines = [];
     this.branch = "";
     this.message = "";
     this.handle = cx.focus_handle();
@@ -81,7 +80,6 @@ export default class ZedChanges extends View {
       this.history = [];
       this.selected = null;
       this.tooMany = false;
-      this.lines = [];
       this.branch = "";
       this.error = null;
       this.note = null;
@@ -99,7 +97,7 @@ export default class ZedChanges extends View {
         const at = args => exec("git", [...READ, ...args], { cwd: root, on: here.on });
         if (!here.on && tooManyChanges(root, home(), 0)) {
           // Never run `status` here: it would walk the whole home directory.
-          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.lines = []; this.remotes = [];
+          this.root = root; this.on = here.on; this.files = []; this.history = []; this.selected = null; this.remotes = [];
           this.branch = "—"; this.tooMany = true; this.error = "Your home folder is a git repository: too many changes to list";
           return;
         }
@@ -124,44 +122,18 @@ export default class ZedChanges extends View {
         const all = parseStatus(status.stdout);
         this.tooMany = tooManyChanges(root, home(), all.length);
         this.files = this.tooMany ? [] : all.slice(0, 1000);
-        if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; this.lines = []; }
-        if (this.diff) this.selected = diffTarget(this.selected, this.files);
+        if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; }
         this.error = this.tooMany ? `Too many changes to list (${all.length})` : null;
         this.watch(root, cx);
-        if (this.diff && this.selected) await this.loadDiff(this.selected, context);
       } catch (e) { if (key() === context) this.error = String(e.message || e); }
       finally { if (key() === context) this.loading = false; cx.notify(); }
     });
   }
 
-  async loadDiff(path, context) {
-    const file = this.files.find(item => item.path === path);
-    if (!file || !this.root) return;
-    let lines;
-    if (file.xy === "??") {
-      const text = await readTextFile(`${this.root}/${path}`, { on: this.on }).catch(() => null);
-      lines = text === null || text.includes("\0") ? ["No text diff"] : text.replace(/\n$/, "").split("\n").slice(0, 400).map(line => `+${line}`);
-    } else {
-      const r = await exec("git", [...READ, "diff", "HEAD", "--no-ext-diff", "--no-color", "--", path], { cwd: this.root, on: this.on });
-      if (r.code !== 0) throw new Error(r.stderr);
-      const all = r.stdout.replace(/\n$/, "").split("\n");
-      const first = all.findIndex(line => line.startsWith("@@"));
-      lines = first < 0 ? ["No text diff"] : all.slice(first, first + 400);
-    }
-    if (key() === context && this.selected === path) this.lines = lines;
-  }
-
   pick(path, cx) {
     this.selected = path;
-    this.lines = [];
-    if (this.diff) {
-      const context = this.context;
-      cx.spawn(async cx => {
-        try { await this.loadDiff(path, context); }
-        catch (e) { if (key() === context) this.note = String(e.message || e); }
-        cx.notify();
-      });
-    }
+    const file = this.files.find(item => item.path === path);
+    if (file && this.root) openDiff({ root: this.root, path, xy: file.xy, on: this.on }, cx);
     cx.notify();
   }
 
@@ -336,12 +308,6 @@ export default class ZedChanges extends View {
         .child(Input.new(this.search).size_full().text_color(t.foreground)));
   }
 
-  toggleDiff(cx) {
-    this.diff = !this.diff;
-    const path = this.diff ? diffTarget(this.selected, this.files) : null;
-    if (path) this.pick(path, cx); else cx.notify();
-  }
-
   git(args, cx, after) {
     if (!this.root || this.busy) return;
     const context = this.context;
@@ -384,7 +350,6 @@ export default class ZedChanges extends View {
         .child(this.chip("zed-history-tab", "History", this.tab === "history", cx => { this.tab = "history"; cx.notify(); }, t))
         .child(div().flex_1())
         .when(this.tab === "changes", el => el
-          .child(this.chip("zed-view-diff", "View Diff", this.diff, cx => this.toggleDiff(cx), t))
           .when(!this.tooMany, el => el.child(this.chip("zed-stage-all", "Stage All", false, cx => this.git(stageAllPlan(), cx), t)))))
       .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar()
         .when(this.tab === "history", el => el.children(this.history.map(commit =>
@@ -405,10 +370,6 @@ export default class ZedChanges extends View {
         .when(this.tab === "changes" && !this.files.length, el => el.child(div().flex_1().flex().items_center().justify_center().text_color(t.dim)
           .child(this.error || (this.loading ? "Loading…" : this.root ? "No changes to commit" : "No folder"))))
         .when(this.tab === "history" && !this.history.length, el => el.child(div().p(12).text_color(t.dim).child(this.loading ? "Loading…" : "No commits"))))
-      .when(this.tab === "changes" && this.diff, el => el.child(v_flex().id("zed-diff").h(220).flex_none().min_h(0).border_t(1).border_color(t.border).py(4).overflow_y_scrollbar()
-        .when(this.lines.length === 0, el => el.child(div().p(10).text_size(12).text_color(t.dim).child(this.files.length ? "Loading…" : "No changes to diff")))
-        .children(this.lines.map((line, i) => div().id(`zed-diff-${i}`).px(10).h(18).flex_none().truncate().text_size(11)
-          .text_color(line.startsWith("+") ? t.ansi2 : line.startsWith("-") ? t.ansi1 : t.dim).child(line)))))
       .when(Boolean(showResult), el => el.child(div().px(10).py(4).text_size(11).text_color(result.ok ? t.muted : t.ansi1).child(result.text)))
       .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
       .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
