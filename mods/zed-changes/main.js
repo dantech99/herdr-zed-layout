@@ -7,11 +7,16 @@ import { spaces, panes, focused, exec, watchFolder, theme, home, props, run, ope
 import { openDiff } from "./open-diff.js";
 import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU } from "./plan.js";
 
+let lastTerminal = null; // where the last focused terminal was
 function location() {
   const space = spaces().find(s => s.active), f = focused();
   const pane = f?.pane ? panes().find(p => p.pane === f.pane) : null;
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  const where = { cwd: pane?.cwd || f?.cwd || space?.folder, on };
+  // A mod tab (a diff or a file) has no folder of its own: keep listing the repository you opened it from.
+  if (pane?.mod && lastTerminal) return lastTerminal;
+  if (!pane?.mod) lastTerminal = where;
+  return where;
 }
 const key = () => JSON.stringify(location());
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
