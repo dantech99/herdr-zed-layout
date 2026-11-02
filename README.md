@@ -24,6 +24,7 @@ Los mods de Herdr que consume directamente son `spaces`, `agents`, `workspace-st
 | `zed-file` | Pestañas de archivo de **solo lectura**, con resaltado, números de línea, recarga al cambiar el directorio y soft-wrap por pestaña (`Alt-Z` o control de wrap). Detecta binarios/no disponibles y limita el texto a 400.000 caracteres. Permite abrir el archivo local con el editor gráfico elegido; Zed es el predeterminado si está instalado. No ofrece esta acción para archivos remotos ni en Windows. |
 | `zed-diff` | Pestaña de diff de **solo lectura**: números de línea de ambos lados, filas verdes/rojas, colores de sintaxis y recarga al cambiar la carpeta, word wrap con el botón `wrap` o `Alt+Z` (hasta 4000 filas). |
 | `zed-changes` | Panel Git: estado, stage/unstage por archivo, stage all, commit de cambios ya staged, historial de 30 commits. Al hacer clic en un archivo cambiado, su diff se abre en una pestaña propia (`zed-diff`). El clic derecho abre un menú con Stage/Unstage File, Discard Changes (con confirmación), Copy Path, Copy Relative Path, Add to .gitignore, Add to .git/info/exclude (solo archivos nuevos), Open Diff y View File. Incluye búsqueda, cambio, creación y borrado de ramas locales, ramas remotas y protección al borrar ramas con commits no publicados. También incorpora Fetch, Fetch From, Pull, Pull (Rebase), Push, Push To y Force Push con `--force-with-lease` y confirmación. La acción principal se adapta a Publish, Pull, Push o Fetch. Se actualiza cada 10 s y vigila la carpeta local. No lista un repositorio ubicado en el directorio personal ni uno con más de 5.000 cambios. |
+| `zed-commands` | Comandos rápidos por proyecto, como en Orca. Botón `▶ etiqueta ▾` a la derecha de la barra de pestañas: el botón ejecuta el último comando usado (o el primero) y `▾` abre el menú con ejecutar, copiar, editar y borrar, más `+ Command`. El diálogo pide Label, Action (Terminal o Agent) y Command. Se guardan por carpeta del space en la clave compartida `zed-commands.items`. Terminal abre una pestaña nueva con el nombre del comando y deja un shell abierto al terminar; Agent abre el agente elegido con el texto como primer mensaje. No hay opción «Append Enter»: Herdr no permite enviar texto a un terminal existente. |
 | `zed-quota` | Barras de cuota basadas en `quota-axi --json`, con detalle, refresco y acceso a Settings. Se actualizan cada 120 s y se consideran obsoletas después de 10 min. Soporta máquinas remotas, `percentRemaining` y la ejecución mediante `cmd.exe` en Windows o shell de login en Unix. |
 
 ## Configuración
@@ -60,7 +61,7 @@ Después de cambiar cualquier archivo de `mods/`, ejecuta `./install.sh` de nuev
 Para comprobar los manifiestos de los mods:
 
 ```bash
-for m in mods/zed-{title,tabs,new-space,sidebar-footer,settings,panel-switch,file-icons,file,changes,quota}/; do
+for m in mods/zed-{title,tabs,commands,new-space,sidebar-footer,settings,panel-switch,file-icons,file,changes,quota}/; do
   herdr-app check "$m"
 done
 ```
