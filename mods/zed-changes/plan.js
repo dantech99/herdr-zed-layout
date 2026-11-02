@@ -146,3 +146,41 @@ export function summarize(stdout, stderr) {
   const text = String(stderr ?? "").trim() || String(stdout ?? "").trim();
   return text ? text.split("\n").slice(0, 3).map(l => l.trim()).join(" ") : "Done";
 }
+
+// --- Right-click menu of a changed file.
+export const isUntracked = file => file.xy === "??";
+export const isDeleted = file => file.xy.includes("D");
+const isStagedOnly = file => file.xy[0] !== " " && file.xy[0] !== "?" && file.xy[1] === " ";
+
+// The entries, in order; "-" is a divider. `enabled` is false when the action does not apply
+// (ignore entries need an untracked file, View File needs a file that still exists).
+export function fileMenu(file) {
+  return [
+    { id: "stage", label: isStagedOnly(file) ? "Unstage File" : "Stage File", enabled: true },
+    { id: "discard", label: "Discard Changes", enabled: true },
+    "-",
+    { id: "copy-path", label: "Copy Path", enabled: true },
+    { id: "copy-relative", label: "Copy Relative Path", enabled: true },
+    "-",
+    { id: "gitignore", label: "Add to .gitignore", enabled: isUntracked(file) },
+    { id: "exclude", label: "Add to .git/info/exclude", enabled: isUntracked(file) },
+    "-",
+    { id: "open-diff", label: "Open Diff", enabled: true },
+    { id: "view-file", label: "View File", enabled: !isDeleted(file) },
+  ];
+}
+
+// Throws the change away: tracked files go back to HEAD (index and work tree), new files are removed.
+export const discardArgs = file => isUntracked(file)
+  ? ["clean", "-f", "--", file.path]
+  : ["restore", "--source=HEAD", "--staged", "--worktree", "--", file.path];
+
+export const discardNote = file => isUntracked(file)
+  ? "This file is new: it will be deleted and git cannot bring it back."
+  : "Your edits to this file, staged or not, are lost and cannot be recovered.";
+
+// The line that makes git ignore exactly this file: anchored to the root (so a leading # or ! is literal), glob characters escaped.
+export const ignoreLine = path => `/${String(path).replace(/[\\*?[\]]/g, "\\$&")}`;
+
+// Appends `line` to a file, creating it (and its folder) when needed, and never twice.
+export const appendLineScript = 'f="$1"; mkdir -p "$(dirname "$f")"; touch "$f"; grep -qxF -- "$2" "$f" || { [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; printf "%s\\n" "$2" >> "$f"; }';

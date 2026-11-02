@@ -154,3 +154,50 @@ test("summarize keeps git's first lines, preferring stderr (where git writes pro
   assert.equal(summarize("x", "To github.com:a/b\n   1a2b..3c4d  main -> main\n"), "To github.com:a/b 1a2b..3c4d  main -> main");
   assert.equal(summarize("", "a\nb\nc\nd\ne"), "a b c");
 });
+
+import { fileMenu, discardArgs, ignoreLine, isUntracked } from "./plan.js";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appendLineScript } from "./plan.js";
+
+const enabled = file => Object.fromEntries(fileMenu(file).filter(e => e !== "-").map(e => [e.id, e.enabled]));
+
+test("file menu: ignore entries need an untracked file, View File a file that exists", () => {
+  assert.equal(enabled({ path: "a", xy: " M" })["gitignore"], false);
+  assert.equal(enabled({ path: "a", xy: "??" })["exclude"], true);
+  assert.equal(enabled({ path: "a", xy: " D" })["view-file"], false);
+  assert.equal(enabled({ path: "a", xy: " M" })["view-file"], true);
+});
+
+test("file menu: the first entry unstages a staged-only file and stages anything else", () => {
+  assert.equal(fileMenu({ path: "a", xy: "M " })[0].label, "Unstage File");
+  assert.equal(fileMenu({ path: "a", xy: "MM" })[0].label, "Stage File");
+  assert.equal(fileMenu({ path: "a", xy: "??" })[0].label, "Stage File");
+});
+
+test("discard restores tracked files from HEAD and cleans new ones", () => {
+  assert.deepEqual(discardArgs({ path: "a b.js", xy: "M " }), ["restore", "--source=HEAD", "--staged", "--worktree", "--", "a b.js"]);
+  assert.deepEqual(discardArgs({ path: "n.js", xy: "??" }), ["clean", "-f", "--", "n.js"]);
+  assert.equal(isUntracked({ xy: "??" }), true);
+});
+
+test("ignoreLine anchors the path and escapes glob characters", () => {
+  assert.equal(ignoreLine("src/a.js"), "/src/a.js");
+  assert.equal(ignoreLine("a[1]*.txt"), "/a\\[1\\]\\*.txt");
+  assert.equal(ignoreLine("#x"), "/#x");
+});
+
+test("appendLineScript adds the line once, on its own line, creating folders", () => {
+  const dir = mkdtempSync(join(tmpdir(), "zc-"));
+  try {
+    const file = join(dir, "info", "exclude");
+    const add = line => execFileSync("sh", ["-c", appendLineScript, "sh", file, line]);
+    add("/a"); add("/a"); add("/b");
+    assert.equal(readFileSync(file, "utf8"), "/a\n/b\n");
+    writeFileSync(file, "/x"); // no trailing newline
+    add("/y");
+    assert.equal(readFileSync(file, "utf8"), "/x\n/y\n");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

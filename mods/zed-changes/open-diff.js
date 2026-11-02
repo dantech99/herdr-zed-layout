@@ -22,3 +22,21 @@ export function openDiff({ root, path, xy, on }, cx) {
     setShared(SHARED_TABS, { ...kept, [added]: id });
   });
 }
+
+const FILE_TABS = "zed-file.tabs"; // shared with zed-file-icons, so a file is never opened twice
+const FILE_ICON = "mods/zed-file-icons/icons/file.svg"; // generic: this mod cannot import the icon theme
+
+// Opens `file` (absolute) as a zed-file tab, or shows its tab when it is already open.
+export function openFileTab(file, on, cx) {
+  const live = tabIds();
+  const map = shared(FILE_TABS) ?? {};
+  const existing = Object.entries(map).find(([tab, entry]) => entry?.file === file && live.includes(tab))?.[0];
+  if (existing) return run("tab.select", { id: existing });
+  run("tab.new", { name: file.split("/").pop(), mod: "zed-file", props: { file, icon: FILE_ICON, on: on ?? null } });
+  cx.timer.after(300, () => {
+    const added = tabIds().find(tab => !live.includes(tab));
+    if (!added) return;
+    const kept = Object.fromEntries(Object.entries(shared(FILE_TABS) ?? {}).filter(([tab]) => tabIds().includes(tab)));
+    setShared(FILE_TABS, { ...kept, [added]: { file, icon: FILE_ICON } });
+  });
+}

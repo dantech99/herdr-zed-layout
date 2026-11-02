@@ -4,8 +4,8 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
-import { openDiff } from "./open-diff.js";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU } from "./plan.js";
+import { openDiff, openFileTab } from "./open-diff.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU, fileMenu, discardArgs, discardNote, ignoreLine, appendLineScript } from "./plan.js";
 
 let lastTerminal = null; // where the last focused terminal was
 function location() {
@@ -32,6 +32,7 @@ const SYNCING = { fetch: "Fetching…", "fetch-from": "Fetching…", pull: "Pull
 export default class ZedChanges extends View {
   init(_given, cx) {
     if (props()?.sync) { this.syncMenu = props(); this.menuError = null; this.pending = null; this.syncing = null; return; } // the sync popup: this same mod draws it
+    if (props()?.fileMenu) { this.fileMenu = props(); this.menuError = null; return; } // the file's right-click popup: this same mod draws it
     if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete modal: this same mod draws it
     if (props()?.menu) { // the branch popup: this same mod draws it
       this.menu = props(); this.menuError = null; this.menuNote = null;
@@ -207,6 +208,52 @@ export default class ZedChanges extends View {
     cx.spawn(async cx => this.doSync(op, undefined, cx));
   }
 
+  // --- Right-click menu of a changed file (Stage, Discard, Copy Path, ignore, Open Diff, View File).
+  openFileMenu(file, cx) {
+    this.selected = file.path;
+    cx.notify();
+    const rows = fileMenu(file), dividers = rows.filter(r => r === "-").length;
+    openOverlay({ mod: "zed-changes", kind: "popup", width: 260, height: 12 + (rows.length - dividers) * 30 + dividers * 9, props: { fileMenu: true, root: this.root, on: this.on, file } });
+  }
+
+  async runFileAction(id, cx) {
+    const { root, on, file, overlay } = this.fileMenu, abs = `${root}/${file.path}`;
+    const close = () => run("overlay.close", { id: overlay });
+    const fail = r => { this.menuError = (r.stderr || "failed").trim().split("\n").slice(0, 3).join(" "); cx.notify(); };
+    if (id === "copy-path") { cx.write_to_clipboard(abs); close(); return; }
+    if (id === "copy-relative") { cx.write_to_clipboard(file.path); close(); return; }
+    if (id === "open-diff") { openDiff({ root, path: file.path, xy: file.xy, on }, cx); close(); return; }
+    if (id === "view-file") { openFileTab(abs, on, cx); close(); return; }
+    if (id === "discard") {
+      close();
+      openOverlay({ mod: "zed-changes", kind: "dialog", width: 400, height: 190, props: {
+        confirm: true, root, on, args: discardArgs(file), title: `Discard changes to ${file.path}?`, body: discardNote(file) } });
+      return;
+    }
+    const run_ = (cmd, args) => exec(cmd, args, { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    let r;
+    if (id === "stage") r = await run_("git", [...READ, ...stagePlan(file)]);
+    else if (id === "gitignore") r = await run_("sh", ["-c", appendLineScript, "sh", `${root}/.gitignore`, ignoreLine(file.path)]);
+    else if (id === "exclude") {
+      const where = await run_("git", [...READ, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"]);
+      r = where.code === 0 ? await run_("sh", ["-c", appendLineScript, "sh", where.stdout.trim(), ignoreLine(file.path)]) : where;
+    }
+    if (r?.code === 0) close(); else if (r) fail(r);
+  }
+
+  renderFileMenu() {
+    const t = theme();
+    const row = e => e === "-" ? div().h(1).my(4).bg(t.border)
+      : h_flex().id(`file-${e.id}`).h(30).px(10).items_center().rounded(6).text_size(12.5)
+        .when(e.enabled, el => el.cursor_pointer().text_color(t.foreground).hover(s => s.bg(t.selected))
+          .on_click((_e, cx) => cx.spawn(async cx => this.runFileAction(e.id, cx))))
+        .when(!e.enabled, el => el.text_color(t.dim))
+        .child(div().flex_1().min_w(0).truncate().child(e.label));
+    return v_flex().id("zed-file-menu").w_full().p(6).bg(t.popover)
+      .children(fileMenu(this.fileMenu.file).map(row))
+      .when(Boolean(this.menuError), el => el.child(div().px(10).py(6).text_size(11.5).text_color(t.ansi1).child(this.menuError)));
+  }
+
   renderSyncMenu() {
     const t = theme(), { remotes } = this.syncMenu;
     const row = (id, label, act, hint) => h_flex().id(id).h(30).px(10).gap(8).items_center().rounded(6).cursor_pointer().text_size(12.5)
@@ -344,6 +391,7 @@ export default class ZedChanges extends View {
   render() {
     if (this.dialog) return this.renderDialog();
     if (this.syncMenu) return this.renderSyncMenu();
+    if (this.fileMenu) return this.renderFileMenu();
     if (this.menu) return this.renderMenu();
     const t = theme();
     const act = this.root && !this.tooMany ? primaryAction({ remotes: this.remotes, upstream: this.upstream, ahead: this.ahead, behind: this.behind }) : null;
@@ -366,6 +414,7 @@ export default class ZedChanges extends View {
             .bg(this.selected === file.path ? t.selected : t.chrome)
             .hover(s => s.bg(t.hover))
             .on_click((_e, cx) => this.pick(file.path, cx))
+            .on_mouse_down("right", (_e, cx) => this.openFileMenu(file, cx))
             .child(div().id(`zed-stage-${file.path}`).size(16).flex_none().flex().items_center().justify_center().rounded(3)
               .border(1).border_color(file.staged ? t.accent : t.border).bg(file.staged ? t.accent : t.chrome)
               .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
