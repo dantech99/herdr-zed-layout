@@ -5,7 +5,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, home, props, run, openOverlay, shared, setShared } from "herdr";
 import { openDiff, openFileTab } from "./open-diff.js";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU, fileMenu, discardArgs, discardNote, ignoreLine, appendLineScript } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, SYNC_MENU, fileMenu, discardArgs, discardNote, ignoreLine, appendLineScript, pickRemote, prState, parsePrView, parsePrUrl, prCreateArgs, prDefaults } from "./plan.js";
 
 let lastTerminal = null; // where the last focused terminal was
 function location() {
@@ -31,6 +31,14 @@ const SYNCING = { fetch: "Fetching…", "fetch-from": "Fetching…", pull: "Pull
 
 export default class ZedChanges extends View {
   init(_given, cx) {
+    if (props()?.prDialog) { // the Create PR dialog: this same mod draws it
+      this.prDialog = props(); this.menuError = null; this.busy = null; this.draft = false;
+      this.prTitle = InputState.new({ value: this.prDialog.title, placeholder: "Pull request title" });
+      this.prBody = TextareaState.new({ placeholder: "Description (optional)", rows: 6 });
+      this.prBody.set_value(this.prDialog.body);
+      try { this.prTitle.focus(); } catch { /* not ready yet: the box still takes a click */ }
+      return;
+    }
     if (props()?.sync) { this.syncMenu = props(); this.menuError = null; this.pending = null; this.syncing = null; return; } // the sync popup: this same mod draws it
     if (props()?.fileMenu) { this.fileMenu = props(); this.menuError = null; return; } // the file's right-click popup: this same mod draws it
     if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete modal: this same mod draws it
@@ -49,6 +57,9 @@ export default class ZedChanges extends View {
     this.tooMany = false;
     this.remotes = [];
     this.upstream = false;
+    this.branchRef = "";
+    this.defaultBranch = null;
+    this.pr = null;
     this.ahead = 0;
     this.behind = 0;
     this.syncing = null;
@@ -87,6 +98,8 @@ export default class ZedChanges extends View {
       this.selected = null;
       this.tooMany = false;
       this.branch = "";
+      this.branchRef = "";
+      this.prKey = null;
       this.error = null;
       this.note = null;
       this.watched = null;
@@ -121,7 +134,8 @@ export default class ZedChanges extends View {
         this.history = log.code === 0
           ? log.stdout.split("\n").filter(Boolean).map(line => { const [hash, subject] = line.split("\0"); return { hash, subject }; })
           : [];
-        this.branch = branchLabel(branch.code === 0 ? branch.stdout.trim() : "", log.code === 0);
+        this.branchRef = branch.code === 0 ? branch.stdout.trim() : "";
+        this.branch = branchLabel(this.branchRef, log.code === 0);
         this.remotes = remotes.code === 0 ? remotes.stdout.split("\n").map(r => r.trim()).filter(Boolean) : [];
         const ab = counts.code === 0 ? parseAheadBehind(counts.stdout) : null; // fails without an upstream
         this.upstream = Boolean(ab); this.ahead = ab?.ahead ?? 0; this.behind = ab?.behind ?? 0;
@@ -131,9 +145,81 @@ export default class ZedChanges extends View {
         if (this.selected && !this.files.some(file => file.path === this.selected)) { this.selected = null; }
         this.error = this.tooMany ? `Too many changes to list (${all.length})` : null;
         this.watch(root, cx);
+        this.checkPr(cx);
       } catch (e) { if (key() === context) this.error = String(e.message || e); }
       finally { if (key() === context) this.loading = false; cx.notify(); }
     });
+  }
+
+  // --- Pull requests, through gh. Looked up once per repository and branch (it hits the network), and
+  // again after a push or a created PR. No default branch means gh is missing or signed out: no button.
+  checkPr(cx) {
+    const { root, on, branchRef } = this, k = `${root}|${on}|${branchRef}`;
+    if (!root || !branchRef || this.prKey === k) return;
+    this.prKey = k; this.pr = null; this.defaultBranch = null;
+    const gh = args => exec("gh", args, { cwd: root, on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    cx.spawn(async cx => {
+      const [repo, view] = await Promise.all([gh(["repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"]), gh(["pr", "view", "--json", "url,state"])]);
+      if (this.prKey !== k) return;
+      this.defaultBranch = repo.code === 0 ? repo.stdout.trim() || null : null;
+      this.pr = view.code === 0 ? parsePrView(view.stdout) : null;
+      cx.notify();
+    });
+  }
+
+  prButton() {
+    return this.root && !this.tooMany ? prState({ branch: this.branchRef, defaultBranch: this.defaultBranch, ahead: this.ahead, upstream: this.upstream, remotes: this.remotes, url: this.pr }) : null;
+  }
+
+  async openPr(cx) {
+    const last = await exec("git", [...READ, "log", "-1", "--format=%s%x00%b"], { cwd: this.root, on: this.on }).catch(() => null);
+    const { title, body } = prDefaults(last?.code === 0 ? last.stdout : "");
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 460, height: 380, props: {
+      prDialog: true, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branchRef, title, body } });
+  }
+
+  // View PR opens the browser through gh on this machine; on a remote machine it copies the URL.
+  viewPr(url, cx) {
+    if (this.on) { cx.write_to_clipboard(url); setShared("zed-changes.result", { text: `Copied ${url}`, ok: true, at: Date.now() }); cx.notify(); return; }
+    cx.spawn(async cx => {
+      const r = await exec("gh", ["pr", "view", "--web"], { cwd: this.root }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+      if (r.code !== 0) { setShared("zed-changes.result", { text: summarize(r.stdout, r.stderr), ok: false, at: Date.now() }); cx.notify(); }
+    });
+  }
+
+  // Publishes the branch when it has no upstream, then creates the PR. A failure stays in the dialog.
+  async submitPr(cx) {
+    const d = this.prDialog;
+    if (this.busy) return;
+    const args = prCreateArgs({ title: this.prTitle.value(), body: this.prBody.value(), draft: this.draft });
+    if (args.error) { this.menuError = args.error; cx.notify(); return; }
+    this.menuError = null; this.busy = "Creating…"; cx.notify();
+    const at = (cmd, a) => exec(cmd, cmd === "git" ? [...READ, ...a] : a, { cwd: d.root, on: d.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
+    let r = d.upstream ? { code: 0 } : await at("git", syncArgs("push", { upstream: false, remote: pickRemote(d.remotes) }));
+    if (r.code === 0) r = await at("gh", args);
+    this.busy = null;
+    if (r.code !== 0) { this.menuError = summarize(r.stdout, r.stderr); cx.notify(); return; }
+    setShared("zed-changes.result", { text: parsePrUrl(r.stdout) ?? "Pull request created", ok: true, at: Date.now() });
+    run("overlay.close", { id: d.overlay });
+  }
+
+  renderPrDialog() {
+    const t = theme(), d = this.prDialog;
+    const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex().id("zed-pr").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child("Create pull request"))
+      .child(div().text_size(12).text_color(t.muted).child(`${d.branch}${d.upstream ? "" : " · will be published first"}`))
+      .child(div().h(34).px(10).flex().items_center().rounded(6).border(1).border_color(t.border).bg(t.background).text_size(12.5)
+        .child(Input.new(this.prTitle).size_full().text_color(t.foreground)))
+      .child(div().h(130).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .child(Textarea.new(this.prBody).size_full().text_size(12).text_color(t.foreground)))
+      .child(this.chip("pr-draft", this.draft ? "✓ Draft" : "Draft", this.draft, cx => { this.draft = !this.draft; cx.notify(); }, t))
+      .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .child(h_flex().gap(8).justify_end().pt(4)
+        .child(button("pr-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: d.overlay })))
+        .child(button("pr-create", this.busy ?? "Create", t.solid, t.solid_foreground, cx => cx.spawn(async cx => this.submitPr(cx)))));
   }
 
   pick(path, cx) {
@@ -186,6 +272,7 @@ export default class ZedChanges extends View {
     this.syncing = SYNCING[op]; this.menuError = null; cx.notify();
     const r = await exec("git", [...READ, ...args], { cwd: src.root, on: src.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
     this.syncing = null;
+    if (r.code === 0) this.prKey = null; // a push can make the PR button appear: look again
     const text = summarize(r.stdout, r.stderr);
     setShared("zed-changes.result", { text, ok: r.code === 0, at: Date.now() });
     if (this.syncMenu) { if (r.code === 0) run("overlay.close", { id: this.syncMenu.overlay }); else { this.menuError = text; this.pending = null; } }
@@ -389,12 +476,14 @@ export default class ZedChanges extends View {
   }
 
   render() {
+    if (this.prDialog) return this.renderPrDialog();
     if (this.dialog) return this.renderDialog();
     if (this.syncMenu) return this.renderSyncMenu();
     if (this.fileMenu) return this.renderFileMenu();
     if (this.menu) return this.renderMenu();
     const t = theme();
     const act = this.root && !this.tooMany ? primaryAction({ remotes: this.remotes, upstream: this.upstream, ahead: this.ahead, behind: this.behind }) : null;
+    const pr = this.prButton();
     const result = shared("zed-changes.result"), showResult = result && Date.now() - result.at < 12000;
     const letter = xy => xy.includes("U") ? "U" : xy.includes("D") ? "D" : xy.includes("A") || xy === "??" ? "A" : "M";
     return v_flex().id("zed-changes").size_full().min_h(0).bg(t.chrome).text_color(t.foreground).text_size(13).track_focus(this.handle)
@@ -427,11 +516,15 @@ export default class ZedChanges extends View {
       .when(Boolean(showResult), el => el.child(div().px(10).py(4).text_size(11).text_color(result.ok ? t.muted : t.ansi1).child(result.text)))
       .when(Boolean(this.note), el => el.child(div().px(10).py(4).text_size(11).text_color(t.ansi1).child(this.note)))
       .when(this.tab === "changes", el => el.child(v_flex().flex_none().gap(8).p(8).border_t(1).border_color(t.border)
-        .child(h_flex().items_center()
+        .child(h_flex().items_center().gap(6)
           .child(div().id("zed-branch").px(6).py(2).rounded(5).text_size(12).text_color(t.muted)
             .when(Boolean(this.root) && !this.tooMany, el => el.cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground)).on_click(() => this.openBranches()))
             .child(`${this.branch || "detached"}${this.root && !this.tooMany ? " ▾" : ""}`))
           .child(div().flex_1())
+          .when(Boolean(pr), el => el.child(div().id("zed-pr-button").h(24).px(8).flex().items_center().rounded(5).cursor_pointer().text_size(12)
+            .bg(t.raised).text_color(t.foreground).hover(s => s.bg(t.hover))
+            .on_click((_e, cx) => pr.kind === "view" ? this.viewPr(pr.url, cx) : cx.spawn(async cx => this.openPr(cx)))
+            .child(pr.kind === "view" ? "View PR" : "Create PR")))
           .when(Boolean(act), el => el.child(h_flex().items_center().rounded(5).bg(t.raised).text_size(12)
             .child(div().id("zed-sync-main").h(24).px(8).flex().items_center().rounded(5).cursor_pointer().text_color(this.syncing ? t.dim : t.foreground)
               .hover(s => s.bg(t.hover)).on_click((_e, cx) => { if (!this.syncing) cx.spawn(async cx => this.doSync(act.op, undefined, cx)); })

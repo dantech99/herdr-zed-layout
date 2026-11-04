@@ -184,3 +184,36 @@ export const ignoreLine = path => `/${String(path).replace(/[\\*?[\]]/g, "\\$&")
 
 // Appends `line` to a file, creating it (and its folder) when needed, and never twice.
 export const appendLineScript = 'f="$1"; mkdir -p "$(dirname "$f")"; touch "$f"; grep -qxF -- "$2" "$f" || { [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; printf "%s\\n" "$2" >> "$f"; }';
+
+// --- Pull requests (gh). Create or view one for the current branch.
+export const pickRemote = remotes => remotes.includes("origin") ? "origin" : remotes[0] ?? null;
+
+// What the PR button shows. `defaultBranch` is null when gh is missing or signed out: no button then.
+// `url` is the open PR of this branch, if any.
+export function prState({ branch, defaultBranch, ahead, upstream, remotes, url }) {
+  if (!branch || !defaultBranch || branch === defaultBranch || !remotes.length) return null;
+  if (url) return { kind: "view", url };
+  return ahead > 0 || !upstream ? { kind: "create" } : null;
+}
+
+// `gh pr view --json url,state`: the URL of an open PR, else null (a merged or closed one allows a new PR).
+export function parsePrView(stdout) {
+  try { const pr = JSON.parse(stdout); return pr?.state === "OPEN" && pr.url ? pr.url : null; } catch { return null; }
+}
+
+// `gh pr create` prints progress first and the PR URL last.
+export function parsePrUrl(stdout) {
+  const lines = String(stdout ?? "").split("\n").map(l => l.trim()).filter(l => /^https:\/\/\S+$/.test(l));
+  return lines.length ? lines[lines.length - 1] : null;
+}
+
+export function prCreateArgs({ title, body, draft }) {
+  if (!String(title ?? "").trim()) return { error: "Enter a title." };
+  return ["pr", "create", "--title", title.trim(), "--body", String(body ?? "").trim(), ...(draft ? ["--draft"] : [])];
+}
+
+// `git log -1 --format=%s%x00%b`: the last commit's subject and body prefill the dialog.
+export function prDefaults(text) {
+  const [subject = "", body = ""] = String(text ?? "").split("\0");
+  return { title: subject.trim(), body: body.trim() };
+}
