@@ -34,6 +34,7 @@ export default class ZedChanges extends View {
     if (props()?.prDialog) { // the Create PR dialog: this same mod draws it
       this.prDialog = props(); this.menuError = null; this.busy = null; this.draft = false;
       this.prTitle = InputState.new({ value: this.prDialog.title, placeholder: "Pull request title" });
+      this.prBase = InputState.new({ value: this.prDialog.base ?? "", placeholder: "Base branch (default if empty)" });
       this.prBody = TextareaState.new({ placeholder: "Description (optional)", rows: 6 });
       this.prBody.set_value(this.prDialog.body);
       try { this.prTitle.focus(); } catch { /* not ready yet: the box still takes a click */ }
@@ -174,8 +175,8 @@ export default class ZedChanges extends View {
   async openPr(cx) {
     const last = await exec("git", [...READ, "log", "-1", "--format=%s%x00%b"], { cwd: this.root, on: this.on }).catch(() => null);
     const { title, body } = prDefaults(last?.code === 0 ? last.stdout : "");
-    openOverlay({ mod: "zed-changes", kind: "dialog", width: 460, height: 380, props: {
-      prDialog: true, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branchRef, title, body } });
+    openOverlay({ mod: "zed-changes", kind: "dialog", width: 460, height: 440, props: {
+      prDialog: true, base: this.defaultBranch, root: this.root, on: this.on, remotes: this.remotes, upstream: this.upstream, branch: this.branchRef, title, body } });
   }
 
   // View PR opens the browser through gh on this machine; on a remote machine it copies the URL.
@@ -191,7 +192,7 @@ export default class ZedChanges extends View {
   async submitPr(cx) {
     const d = this.prDialog;
     if (this.busy) return;
-    const args = prCreateArgs({ title: this.prTitle.value(), body: this.prBody.value(), draft: this.draft });
+    const args = prCreateArgs({ title: this.prTitle.value(), body: this.prBody.value(), base: this.prBase.value(), draft: this.draft });
     if (args.error) { this.menuError = args.error; cx.notify(); return; }
     this.menuError = null; this.busy = "Creating…"; cx.notify();
     const at = (cmd, a) => exec(cmd, cmd === "git" ? [...READ, ...a] : a, { cwd: d.root, on: d.on }).catch(e => ({ code: 1, stdout: "", stderr: String(e.message || e) }));
@@ -215,6 +216,10 @@ export default class ZedChanges extends View {
       .child(div().h(130).px(8).py(6).rounded(6).border(1).border_color(t.border).bg(t.background)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .child(Textarea.new(this.prBody).size_full().text_size(12).text_color(t.foreground)))
+      .child(h_flex().gap(8).items_center()
+        .child(div().flex_none().text_size(12).text_color(t.muted).child("Base branch"))
+        .child(div().flex_1().h(30).px(10).flex().items_center().rounded(6).border(1).border_color(t.border).bg(t.background).text_size(12.5)
+          .child(Input.new(this.prBase).size_full().text_color(t.foreground))))
       .child(this.chip("pr-draft", this.draft ? "✓ Draft" : "Draft", this.draft, cx => { this.draft = !this.draft; cx.notify(); }, t))
       .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
       .child(h_flex().gap(8).justify_end().pt(4)

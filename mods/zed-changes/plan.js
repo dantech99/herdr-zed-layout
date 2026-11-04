@@ -207,9 +207,10 @@ export function parsePrUrl(stdout) {
   return lines.length ? lines[lines.length - 1] : null;
 }
 
-export function prCreateArgs({ title, body, draft }) {
+export function prCreateArgs({ title, body, base, draft }) {
   if (!String(title ?? "").trim()) return { error: "Enter a title." };
-  return ["pr", "create", "--title", title.trim(), "--body", String(body ?? "").trim(), ...(draft ? ["--draft"] : [])];
+  const into = String(base ?? "").trim();
+  return ["pr", "create", "--title", title.trim(), "--body", String(body ?? "").trim(), ...(into ? ["--base", into] : []), ...(draft ? ["--draft"] : [])];
 }
 
 // `git log -1 --format=%s%x00%b`: the last commit's subject and body prefill the dialog.
