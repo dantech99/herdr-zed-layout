@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, LIST_MAX, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize } from "./plan.js";
+import { parseStatus, stagePlan, stageAllPlan, commitPlan, branchLabel, tooManyChanges, MAX_CHANGES, parseBranches, switchArgs, BRANCH_FORMAT, deleteArgs, canDelete, deletedNote, filterBranches, canCreate, createArgs, unpushedArgs, parseCount, listHeight, LIST_MAX, syncArgs, needsRemote, isForce, parseAheadBehind, primaryAction, summarize, pickRemote, prState, parsePrView, parsePrUrl, prCreateArgs, prDefaults } from "./plan.js";
 
 test("status lines split the index from the work tree", () => {
   assert.deepEqual(parseStatus(" M src/a.js\0?? src/b.js\0M  src/c.js\0"), [
@@ -200,4 +200,44 @@ test("appendLineScript adds the line once, on its own line, creating folders", (
     add("/y");
     assert.equal(readFileSync(file, "utf8"), "/x\n/y\n");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("the PR remote prefers origin, else the first one", () => {
+  assert.equal(pickRemote(["up", "origin"]), "origin");
+  assert.equal(pickRemote(["up"]), "up");
+  assert.equal(pickRemote([]), null);
+});
+
+test("the PR button: create on any non-default branch without an open PR, view when one is open", () => {
+  const base = { branch: "feat/x", defaultBranch: "main", ahead: 2, upstream: true, remotes: ["origin"], url: null };
+  assert.deepEqual(prState(base), { kind: "create" });
+  assert.deepEqual(prState({ ...base, ahead: 0, upstream: false }), { kind: "create" }); // unpublished branch
+  assert.deepEqual(prState({ ...base, ahead: 0 }), { kind: "create" }); // pushed already, still no PR
+  assert.deepEqual(prState({ ...base, ahead: 0, url: "https://github.com/o/r/pull/1" }), { kind: "view", url: "https://github.com/o/r/pull/1" });
+  assert.equal(prState({ ...base, branch: "main" }), null);
+  assert.equal(prState({ ...base, branch: "" }), null);
+  assert.equal(prState({ ...base, defaultBranch: null }), null); // gh missing or signed out
+  assert.equal(prState({ ...base, remotes: [] }), null);
+});
+
+test("gh pr view output: only an open PR counts", () => {
+  assert.equal(parsePrView('{"state":"OPEN","url":"https://github.com/o/r/pull/3"}'), "https://github.com/o/r/pull/3");
+  assert.equal(parsePrView('{"state":"MERGED","url":"https://github.com/o/r/pull/3"}'), null);
+  assert.equal(parsePrView("not json"), null);
+});
+
+test("the PR url is the last https line gh prints", () => {
+  assert.equal(parsePrUrl("Creating pull request\nhttps://github.com/o/r/pull/9\n"), "https://github.com/o/r/pull/9");
+  assert.equal(parsePrUrl("nothing"), null);
+});
+
+test("gh pr create takes title and body as separate arguments, draft optional", () => {
+  assert.deepEqual(prCreateArgs({ title: " T ", body: "B", draft: false }), ["pr", "create", "--title", "T", "--body", "B"]);
+  assert.deepEqual(prCreateArgs({ title: "T", body: "", draft: true }), ["pr", "create", "--title", "T", "--body", "", "--draft"]);
+  assert.deepEqual(prCreateArgs({ title: "  ", body: "" }), { error: "Enter a title." });
+});
+
+test("PR defaults come from the last commit", () => {
+  assert.deepEqual(prDefaults("feat: a\0body text\n"), { title: "feat: a", body: "body text" });
+  assert.deepEqual(prDefaults(""), { title: "", body: "" });
 });
