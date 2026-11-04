@@ -235,6 +235,8 @@ test("gh pr create takes title and body as separate arguments, draft optional", 
   assert.deepEqual(prCreateArgs({ title: " T ", body: "B", draft: false }), ["pr", "create", "--title", "T", "--body", "B"]);
   assert.deepEqual(prCreateArgs({ title: "T", body: "", draft: true }), ["pr", "create", "--title", "T", "--body", "", "--draft"]);
   assert.deepEqual(prCreateArgs({ title: "  ", body: "" }), { error: "Enter a title." });
+  assert.deepEqual(prCreateArgs({ title: "T", body: "B", base: " develop ", draft: true }), ["pr", "create", "--title", "T", "--body", "B", "--base", "develop", "--draft"]);
+  assert.deepEqual(prCreateArgs({ title: "T", body: "B", base: "  " }), ["pr", "create", "--title", "T", "--body", "B"]); // empty: gh uses the default branch
 });
 
 test("PR defaults come from the last commit", () => {
