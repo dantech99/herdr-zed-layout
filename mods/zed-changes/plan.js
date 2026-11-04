@@ -188,12 +188,12 @@ export const appendLineScript = 'f="$1"; mkdir -p "$(dirname "$f")"; touch "$f";
 // --- Pull requests (gh). Create or view one for the current branch.
 export const pickRemote = remotes => remotes.includes("origin") ? "origin" : remotes[0] ?? null;
 
-// What the PR button shows. `defaultBranch` is null when gh is missing or signed out: no button then.
+// What the PR button shows: any branch but the default one, so it stays after the push (gh reports a
+// branch with nothing to merge). `defaultBranch` is null when gh is missing or signed out: no button then.
 // `url` is the open PR of this branch, if any.
-export function prState({ branch, defaultBranch, ahead, upstream, remotes, url }) {
+export function prState({ branch, defaultBranch, remotes, url }) {
   if (!branch || !defaultBranch || branch === defaultBranch || !remotes.length) return null;
-  if (url) return { kind: "view", url };
-  return ahead > 0 || !upstream ? { kind: "create" } : null;
+  return url ? { kind: "view", url } : { kind: "create" };
 }
 
 // `gh pr view --json url,state`: the URL of an open PR, else null (a merged or closed one allows a new PR).

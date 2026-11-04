@@ -168,7 +168,7 @@ export default class ZedChanges extends View {
   }
 
   prButton() {
-    return this.root && !this.tooMany ? prState({ branch: this.branchRef, defaultBranch: this.defaultBranch, ahead: this.ahead, upstream: this.upstream, remotes: this.remotes, url: this.pr }) : null;
+    return this.root && !this.tooMany ? prState({ branch: this.branchRef, defaultBranch: this.defaultBranch, remotes: this.remotes, url: this.pr }) : null;
   }
 
   async openPr(cx) {

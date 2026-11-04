@@ -208,11 +208,11 @@ test("the PR remote prefers origin, else the first one", () => {
   assert.equal(pickRemote([]), null);
 });
 
-test("the PR button: create on a feature branch with work to share, view when a PR is open", () => {
+test("the PR button: create on any non-default branch without an open PR, view when one is open", () => {
   const base = { branch: "feat/x", defaultBranch: "main", ahead: 2, upstream: true, remotes: ["origin"], url: null };
   assert.deepEqual(prState(base), { kind: "create" });
   assert.deepEqual(prState({ ...base, ahead: 0, upstream: false }), { kind: "create" }); // unpublished branch
-  assert.equal(prState({ ...base, ahead: 0 }), null); // published, nothing new
+  assert.deepEqual(prState({ ...base, ahead: 0 }), { kind: "create" }); // pushed already, still no PR
   assert.deepEqual(prState({ ...base, ahead: 0, url: "https://github.com/o/r/pull/1" }), { kind: "view", url: "https://github.com/o/r/pull/1" });
   assert.equal(prState({ ...base, branch: "main" }), null);
   assert.equal(prState({ ...base, branch: "" }), null);
