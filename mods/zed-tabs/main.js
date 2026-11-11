@@ -1,5 +1,5 @@
 import { View, div, svg, image } from "gpui-kit";
-import { h_flex } from "gpui-base";
+import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, shared, run, openOverlay, theme, layout } from "herdr";
 
 function find(node, id) {
@@ -14,6 +14,7 @@ function find(node, id) {
 export default class ZedTabs extends View {
   init() {
     this.pressed = null;
+    this.scroll = ScrollHandle.new();
     this.panels = JSON.parse(localStorage.getItem("zed.panels") ?? "{}");
   }
 
@@ -49,6 +50,15 @@ export default class ZedTabs extends View {
     const t = theme();
     const space = spaces().find(p => p.active);
     const shown = space?.tabs ?? [];
+    // Keep the active tab fully in view, close button included, when the row overflows.
+    const active = shown.findIndex(tab => tab.active);
+    const selected = shown[active]?.id;
+    if (selected !== this.selected || active !== this.selectedIndex) {
+      this.selected = selected;
+      this.selectedIndex = active;
+      if (active >= 0) this.scroll.scroll_to_item(active);
+    }
+    const reveal = (_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } };
     const stop = (_e, cx) => cx.stop_propagation();
     const item = (c, i) => {
       const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program
@@ -56,6 +66,8 @@ export default class ZedTabs extends View {
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const fileTab = shared("zed-file.tabs")?.[c.id]; // a file opened from the Files panel
       return h_flex().id(`tab-${c.id}`).h_full().pl(12).pr(6).gap(8).items_center().flex_none()
+        // A rename or status change on this or an earlier tab can push the active one out.
+        .when(i <= active, el => el.on_size_change(reveal))
         .border_r(1).border_color(t.border)
         .bg(c.active ? t.background : t.chrome)
         .text_color(c.active ? t.foreground : t.muted)
@@ -98,7 +110,8 @@ export default class ZedTabs extends View {
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       // The + is the last item of the tab row, so it sits right after the last tab. With more
       // tabs than fit, it scrolls with them instead of staying pinned at the edge.
-      .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scrollbar()
+      .child(h_flex().id("zed-tab-scroll").flex_1().min_w(0).h_full().items_center().overflow_x_scroll().track_scroll(this.scroll)
+        .on_size_change(reveal)
         .children(shown.map(item))
         .child(div().id("zed-tab-new").size(24).mx(6).flex_none().flex().items_center().justify_center().rounded(4)
           .text_color(t.muted)
