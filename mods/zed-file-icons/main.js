@@ -4,14 +4,17 @@
 // Modified from Herdr's shipped `files` mod (https://github.com/herdrdev/herdr-app, Apache-2.0):
 // added DIR, icon() and the Material Icon Theme icons in the rows and the preview header.
 // herdr-zed-layout: clicking a file opens it as a tab (openTab) instead of the in-panel preview.
+// herdr-zed-layout: right-click on a row opens a popup (Copy Path, Copy Relative Path, Delete);
+// Delete asks first in a dialog. This same mod draws both (props().fileMenu, props().confirm).
 //
 // Original: https://github.com/amster93/herdr-file-icons (Apache-2.0, see LICENSE).
 // Changed for herdr-zed-layout: the root no longer draws its own rounded, bordered card.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, props, run, openOverlay, shared, setShared } from "herdr";
 import ICONS from "./icons.js";
 import { openFile } from "./open-tab.js";
+import { FILE_MENU, menuHeight, deleteCommand, deleteTitle, deleteNote, withoutPath } from "./menu.js";
 
 let lastTerminal = null; // herdr-zed-layout: where the last focused terminal was
 function location() {
@@ -28,6 +31,7 @@ const key = () => JSON.stringify(location());
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
 const DIR = "mods/zed-file-icons";
+const CHANGED = "zed-file-icons.changed"; // { root, on, path, at }: the dialog deleted this, the panel reloads
 
 // Material Icon Theme's rules, as VS Code applies them: names match case-insensitively; a
 // path rule (".github/workflows") beats a name, a name beats an extension, and the longest
@@ -66,6 +70,9 @@ async function directory(path, on) {
 
 export default class Files extends View {
   init(_props, cx) {
+    if (props()?.fileMenu) { this.fileMenu = props(); return; } // the row's right-click popup
+    if (props()?.confirm) { this.dialog = props(); this.menuError = null; return; } // the delete dialog
+    this.changedAt = shared(CHANGED)?.at;
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
@@ -165,6 +172,67 @@ export default class Files extends View {
     openFile({ file: `${this.root}/${path}`, icon: icon(path, false, false, Boolean(settings().dark)), on: this.on }, cx);
   }
 
+  // --- Right-click menu of a row (Copy Path, Copy Relative Path, Delete).
+  openMenu(path, dir) {
+    openOverlay({ mod: "zed-file-icons", kind: "popup", width: 220, height: menuHeight(FILE_MENU), props: { fileMenu: true, root: this.root, on: this.on, path, dir } });
+  }
+
+  runMenuAction(id, cx) {
+    const { root, on, path, dir, overlay } = this.fileMenu;
+    if (id === "copy-path") cx.write_to_clipboard(`${root}/${path}`);
+    else if (id === "copy-relative") cx.write_to_clipboard(path);
+    run("overlay.close", { id: overlay });
+    if (id === "delete") openOverlay({ mod: "zed-file-icons", kind: "dialog", width: 400, height: 190, props: { confirm: true, root, on, path, dir } });
+  }
+
+  renderMenu() {
+    const t = theme();
+    const row = e => e === "-" ? div().h(1).my(4).bg(t.border)
+      : h_flex().id(`files-menu-${e.id}`).h(30).px(10).items_center().rounded(6).text_size(12.5).cursor_pointer()
+        .text_color(e.danger ? t.ansi1 : t.foreground).hover(s => s.bg(t.selected))
+        .on_click((_e, cx) => this.runMenuAction(e.id, cx))
+        .child(div().flex_1().min_w(0).truncate().child(e.label));
+    return v_flex().id("files-menu").w_full().p(6).bg(t.popover).children(FILE_MENU.map(row));
+  }
+
+  // The dialog: accept deletes the file or folder it was opened for, cancel closes it.
+  async acceptDelete(cx) {
+    const { root, on, path, overlay } = this.dialog;
+    let r;
+    try {
+      const { cmd, args } = deleteCommand(root, path, !on && window()?.platform === "windows");
+      r = await exec(cmd, args, { on });
+    } catch (e) { r = { code: 1, stderr: String(e.message || e) }; }
+    if (r.code !== 0) { this.menuError = (r.stderr || "Could not delete").trim().split("\n").slice(0, 3).join(" "); cx.notify(); return; }
+    setShared(CHANGED, { root, on: on ?? null, path, at: Date.now() });
+    run("overlay.close", { id: overlay });
+  }
+
+  renderDialog() {
+    const t = theme(), { path, dir, overlay } = this.dialog;
+    const button = (id, label, bg, color, act) => div().id(id).h(30).px(14).flex().items_center().rounded(6).cursor_pointer().text_size(12.5)
+      .bg(bg).text_color(color).on_click((_e, cx) => act(cx)).child(label);
+    return v_flex().id("files-confirm").w_full().p(18).gap(10).bg(t.popover).text_color(t.foreground)
+      .child(div().text_size(15).font_semibold().child(deleteTitle(path)))
+      .child(div().text_size(12.5).text_color(t.muted).child(deleteNote(dir)))
+      .child(div().text_size(11.5).text_color(t.dim).truncate().child(path))
+      .when(Boolean(this.menuError), el => el.child(div().text_size(11.5).text_color(t.ansi1).child(this.menuError)))
+      .child(h_flex().gap(8).justify_end().pt(4)
+        .child(button("files-confirm-cancel", "Cancel", t.raised, t.muted, () => run("overlay.close", { id: overlay })))
+        .child(button("files-confirm-delete", "Delete", t.ansi1, t.background, cx => cx.spawn(async cx => this.acceptDelete(cx)))));
+  }
+
+  // A delete made by the dialog (another copy of this mod): forget the folder and reload the tree.
+  // A remote folder has no watcher, so this is its only signal.
+  afterDelete(cx) {
+    const changed = shared(CHANGED);
+    if (!changed?.at || changed.at === this.changedAt) return;
+    this.changedAt = changed.at;
+    if (changed.root !== this.root || (changed.on ?? null) !== (this.on ?? null)) return;
+    for (const folder of [...this.folders]) if (!withoutPath([folder], changed.path).length) { this.folders.delete(folder); this.entries.delete(folder); }
+    if (this.loading) cx.timer.after(600, cx => this.refresh(cx)); else this.refresh(cx);
+  }
+
   rows(prefix, depth, out, t, dark) {
     if (out.length >= TOTAL || depth > 40) return out;
     for (const entry of this.entries.get(prefix) ?? []) {
@@ -172,6 +240,7 @@ export default class Files extends View {
       const path = prefix ? `${prefix}/${entry.name}` : entry.name, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
       out.push(h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => entry.dir ? this.toggle(path, cx) : this.openTab(path, cx))
+        .on_mouse_down("right", () => this.openMenu(path, entry.dir))
         .child(entry.dir ? svg(`${DIR}/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(image(icon(path, entry.dir, open, dark)).size(16).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
@@ -182,7 +251,10 @@ export default class Files extends View {
   }
 
   render(cx) {
+    if (this.dialog) return this.renderDialog();
+    if (this.fileMenu) return this.renderMenu();
     if (key() !== this.context) this.refresh(cx);
+    this.afterDelete(cx);
     const t = theme(), dark = Boolean(settings().dark);
     return v_flex().id("files").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
