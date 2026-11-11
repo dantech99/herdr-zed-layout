@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { languageFor, prepare, shortPath, MAX_CHARS } from "./file.js";
+import { languageFor, prepare, shortPath, isMarkdown, MAX_CHARS } from "./file.js";
 
 test("languageFor maps extensions to the editor's languages", () => {
   assert.equal(languageFor("a/b/app.ts"), "js");
@@ -69,4 +69,14 @@ test("preferredEditor honours the saved choice, defaults to Zed, then falls back
   assert.equal(preferredEditor(found, "Cursor").cmd, "zeditor");
   assert.equal(preferredEditor([{ cmd: "kate", label: "Kate" }], "Zed").cmd, "kate");
   assert.equal(preferredEditor([], "Zed"), null);
+});
+
+test("isMarkdown recognises markdown files by extension only", () => {
+  assert.equal(isMarkdown("docs/README.md"), true);
+  assert.equal(isMarkdown("NOTES.MD"), true);
+  assert.equal(isMarkdown("a/b/guide.markdown"), true);
+  assert.equal(isMarkdown("main.rs"), false);
+  assert.equal(isMarkdown("md"), false);
+  assert.equal(isMarkdown(".md"), false);
+  assert.equal(isMarkdown(null), false);
 });

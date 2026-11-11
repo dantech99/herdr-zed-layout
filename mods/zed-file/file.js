@@ -14,6 +14,12 @@ export function languageFor(path) {
   return LANG[ext] ?? ext;
 }
 
+// Markdown files get a rendered preview next to their source.
+export function isMarkdown(path) {
+  const name = baseName(path), dot = name.lastIndexOf(".");
+  return dot > 0 && ["md", "markdown"].includes(name.slice(dot + 1).toLowerCase());
+}
+
 // What to show for the text readTextFile returned (null = gone or unreadable).
 export function prepare(text) {
   if (text === null || text === undefined) return { kind: "missing", text: "" };
