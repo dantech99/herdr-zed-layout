@@ -1,12 +1,13 @@
-// A file shown as a tab: read-only, with syntax highlighting and line numbers. Opened by
+// A file shown as a tab: read-only, with syntax highlighting and line numbers; a markdown file can
+// also be shown rendered (the header's "preview" toggle, or alt-p). Opened by
 // `tab.new {mod: "zed-file", props: {file, on}}` from the Files panel. Editing is left to a code
 // editor (the header button opens the file in one). It re-reads the file when its folder changes
 // (agents edit files under you).
 
 import { View, div, image } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
+import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { props, run, exec, openOverlay, window, setShared, readTextFile, watchFolder, shared, theme, settings, home } from "herdr";
-import { languageFor, prepare, shortPath, detectScript, parseFound, launchArgs, editorIcon, preferredEditor } from "./file.js";
+import { languageFor, isMarkdown, prepare, shortPath, detectScript, parseFound, launchArgs, editorIcon, preferredEditor } from "./file.js";
 
 export default class ZedFile extends View {
   init(_given, cx) {
@@ -18,6 +19,8 @@ export default class ZedFile extends View {
     this.state = { kind: "loading", text: "" };
     this.code = null;
     this.wrap = Boolean(shared("zed-file.options")?.wrap); // the global default; the header toggle overrides it per tab
+    this.markdown = isMarkdown(this.file);
+    this.preview = this.markdown && Boolean(p.preview); // opens on its source unless the opener asks for the preview
     this.alive = true;
     this.detect(cx);
     if (!this.file) { this.state = { kind: "missing", text: "" }; return; }
@@ -102,6 +105,12 @@ export default class ZedFile extends View {
     cx.notify();
   }
 
+  togglePreview(cx) {
+    if (!this.markdown) return;
+    this.preview = !this.preview;
+    cx.notify();
+  }
+
   async close() {
     this.alive = false;
     this.code?.release();
@@ -115,12 +124,19 @@ export default class ZedFile extends View {
   render() {
     if (this.menu) return this.renderMenu();
     const t = theme(), s = this.state;
-    const body = s.kind === "ok" && this.code ? Editor.new(this.code).flex_1().min_h(0)
+    const preview = this.preview && s.kind === "ok";
+    // The rendered text re-reads with the file, as the source does: it is drawn from the same state.
+    const body = preview ? div().flex_1().min_h(0).px(24).py(16).text_size(14)
+        .child(TextView.markdown("zed-file-preview", s.text).selectable().scrollable())
+      : s.kind === "ok" && this.code ? Editor.new(this.code).flex_1().min_h(0)
       : s.kind === "binary" ? this.message("Binary file · no text view", t)
       : s.kind === "missing" ? this.message("This file is not available", t)
       : this.message("Loading…", t);
     return v_flex().id("zed-file").key_context("ZedFile").size_full().min_h(0).bg(t.background).text_color(t.foreground)
-      .on_key_down((e, cx) => { if (e.keystroke === "alt-z") { cx.stop_propagation(); this.toggleWrap(cx); } })
+      .on_key_down((e, cx) => {
+        if (e.keystroke === "alt-z") { cx.stop_propagation(); this.toggleWrap(cx); }
+        else if (e.keystroke === "alt-p" && this.markdown) { cx.stop_propagation(); this.togglePreview(cx); }
+      })
       .child(h_flex().h(28).px(12).gap(8).flex_none().items_center().border_b(1).border_color(t.border).text_size(12)
         .child(this.icon ? image(this.icon).size(14).flex_none() : div())
         .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(this.file ? shortPath(this.file, home()) : ""))
@@ -133,7 +149,9 @@ export default class ZedFile extends View {
             .child(div().id("open-menu").px(4).rounded(4).cursor_pointer().hover(s => s.text_color(t.foreground)).tooltip("Choose an editor")
               .on_click(() => this.openMenu()).child("▾")));
         })
-        .when(this.state.kind === "ok", el => el.child(div().id("wrap").cursor_pointer().text_color(this.wrap ? t.foreground : t.dim)
+        .when(this.state.kind === "ok" && this.markdown, el => el.child(div().id("preview").cursor_pointer().text_color(preview ? t.foreground : t.dim)
+          .on_click((_e, cx) => this.togglePreview(cx)).child("preview")))
+        .when(this.state.kind === "ok" && !preview, el => el.child(div().id("wrap").cursor_pointer().text_color(this.wrap ? t.foreground : t.dim)
           .on_click((_e, cx) => this.toggleWrap(cx)).child("wrap")))
         .child(div().text_color(t.dim).child("read only")))
       .child(body);
